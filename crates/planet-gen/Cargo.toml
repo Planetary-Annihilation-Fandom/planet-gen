@@ -1,0 +1,13 @@
+[package]
+name = "planet-gen"
+version = "0.1.0"
+edition = "2021"
+description = "Воссоздание генератора планет Planetary Annihilation"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "planet-gen"
+path = "src/bin/planet-gen.rs"

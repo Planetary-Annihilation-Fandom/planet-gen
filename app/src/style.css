@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+  --bg: #101317;
+  --panel: #181c22;
+  --line: #2a3039;
+  --text: #d8dee6;
+  --muted: #8a94a3;
+  --accent: #4f9cf0;
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+body { display: flex; }
+#panel { width: 300px; flex: none; overflow-y: auto; padding: 12px; background: var(--panel); border-right: 1px solid var(--line); }
+#view { flex: 1; position: relative; min-width: 0; }
+h1 { font-size: 15px; margin: 0 0 10px; }
+section { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+label { display: grid; grid-template-columns: 1fr 140px; align-items: center; gap: 8px; color: var(--muted); }
+.toggles label, label.file { grid-template-columns: auto 1fr; }
+input, select, button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; min-width: 0; }
+input[type="checkbox"] { padding: 0; }
+button { background: var(--accent); border-color: var(--accent); color: #fff; padding: 6px; cursor: pointer; }
+button:disabled { opacity: 0.6; cursor: wait; }
+#stats { white-space: pre-wrap; color: var(--muted); font: 12px/1.45 Consolas, monospace; margin: 10px 0 0; }
+.error { color: #f07070; }

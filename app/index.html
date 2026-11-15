@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>planet-gen</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <aside id="panel">
+      <h1>planet-gen</h1>
+      <section>
+        <label>Система <select id="system"></select></label>
+        <label>Планета <select id="planet"></select></label>
+        <label class="file">Открыть .pas <input id="file" type="file" accept=".pas,.json" /></label>
+      </section>
+      <section id="params"></section>
+      <section>
+        <label>Уклон для металла, ° <input id="slope" type="number" value="40" step="1" /></label>
+        <button id="run">Сгенерировать</button>
+      </section>
+      <section class="toggles">
+        <label><input id="showWater" type="checkbox" checked /> вода и лава</label>
+        <label><input id="showMetal" type="checkbox" checked /> металл</label>
+        <label><input id="showCand" type="checkbox" /> кандидаты</label>
+        <label><input id="showWire" type="checkbox" /> сетка</label>
+      </section>
+      <pre id="stats"></pre>
+    </aside>
+    <main id="view"></main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
