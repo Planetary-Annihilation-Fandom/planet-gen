@@ -79,6 +79,26 @@ fn summary(p: &Planet) -> String {
         m.candidates.len(),
         m.spots.len(),
     );
+    let mut counts = vec![0usize; p.biomes.len()];
+    for &b in &p.biome_index {
+        if let Some(c) = counts.get_mut(b as usize) {
+            *c += 1;
+        }
+    }
+    let list: Vec<String> = p.biomes.iter().zip(&counts).map(|(b, c)| format!("{} {c}", b.name)).collect();
+    s.push_str(&format!("подбиомы: {}
+", list.join(", ")));
+    s.push_str(&format!(
+        "кисти CSG {}, пропущено {}, сдвинуто вершин {}
+",
+        p.csg.brushes.len(),
+        p.csg.skipped.len(),
+        p.csg_changed
+    ));
+    for (spec, why) in &p.csg.skipped {
+        s.push_str(&format!("  пропущена {spec}: {why}
+"));
+    }
     if m.limit_is_random {
         s.push_str("задан metalSpotLimit: игра обрезает точки в случайном порядке\n");
     }

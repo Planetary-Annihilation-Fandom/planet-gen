@@ -1,9 +1,12 @@
 //! Воссоздание генератора планет Planetary Annihilation: поверхность, вода и металл.
 
+pub mod biomes;
 pub mod config;
+pub mod csg;
 pub mod math;
 pub mod metal;
 pub mod noise;
+pub mod papa;
 pub mod raycast;
 pub mod rng;
 pub mod surface;
@@ -34,10 +37,19 @@ pub struct Planet {
     pub water_radius: Option<f32>,
     pub lava_radius: Option<f32>,
     pub metal: MetalResult,
+    /// Подбиомы архетипа.
+    pub biomes: Vec<biomes::BiomeDef>,
+    /// Подбиом каждой вершины.
+    pub biome_index: Vec<u8>,
+    /// Доли подбиомов у вершины, `biomes.len()` байт на вершину.
+    pub biome_weights: Vec<u8>,
+    pub csg: csg::CsgResult,
+    /// Вершины поверхности, которые сдвинули кисти CSG.
+    pub csg_changed: usize,
 }
 
-/// Строит планету по готовому `PlanetBp`.
-pub fn generate(bp: &PlanetBp, opts: MetalOptions) -> Planet {
+/// Строит планету по готовому `PlanetBp`; `csg` — массив `planetCSG` системы.
+pub fn generate(bp: &PlanetBp, media: &Path, csg_list: &[Value], opts: MetalOptions) -> Planet {
     let mut s = Surface::generate(bp.radius, bp.plate_size);
     if !bp.archetype.ignore_height_range {
         s.gen_height(bp);
@@ -45,6 +57,17 @@ pub fn generate(bp: &PlanetBp, opts: MetalOptions) -> Planet {
     if bp.symmetry_type != SymmetryType::None {
         s.mirror(bp);
     }
+    let triangles = s.triangles();
+    let defs = biomes::load(media, &bp.archetype.name);
+    let graph = biomes::Graph::new(&s, &triangles);
+    let bmap = biomes::assign(bp, &s, &graph, &defs);
+
+    // В игре CSG применяется после биомов и до расстановки металла.
+    let pre = raycast::Raycaster::new(&s);
+    let far = bp.radius * 2.0;
+    let sample = |d: math::V3| pre.segment(math::scale(d, far), [0.0; 3]).map_or(bp.radius, |h| math::length(h.pos));
+    let csg = csg::build(media, csg_list, &sample);
+    let csg_changed = csg::apply_to_surface(&mut s, &csg);
     s.gen_surface_normals();
 
     let (mut lo, mut hi) = (f32::MAX, f32::MIN);
@@ -64,12 +87,17 @@ pub fn generate(bp: &PlanetBp, opts: MetalOptions) -> Planet {
         positions: s.surfels.iter().map(|x| x.pos).collect(),
         colors: s.surfels.iter().map(|x| x.color).collect(),
         heights: s.surfels.iter().map(|x| x.height).collect(),
-        triangles: s.triangles(),
+        triangles,
         min_radius: lo,
         max_radius: hi,
         water_radius: bp.archetype.enable_water.then_some(level),
         lava_radius: bp.archetype.enable_lava.then_some(level),
         metal,
+        biomes: defs,
+        biome_index: bmap.index,
+        biome_weights: bmap.weights,
+        csg,
+        csg_changed,
     }
 }
 
@@ -79,7 +107,8 @@ pub fn generate_from_json(planet: &Value, media: &Path, opts: MetalOptions) -> P
     let biome = g.get("biome").and_then(Value::as_str).unwrap_or("earth");
     let arch = config::load_archetype(media, biome);
     let bp = PlanetBp::from_generator(g, arch);
-    generate(&bp, opts)
+    let csg = planet.get("planetCSG").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+    generate(&bp, media, csg, opts)
 }
 
 /// Список планет системы: файл `.pas`/`.json` с массивом `planets` или одна планета.

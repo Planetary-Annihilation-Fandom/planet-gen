@@ -157,10 +157,10 @@ pub fn default_media() -> PathBuf {
     PathBuf::from(r"C:\workroot\software\steam\steamapps\common\Planetary Annihilation Titans\media")
 }
 
-fn read_json(media: &Path, spec: &str) -> Option<Value> {
+pub fn read_json(media: &Path, spec: &str) -> Option<Value> {
     let rel = spec.trim_start_matches('/');
     let text = std::fs::read_to_string(media.join(rel)).ok()?;
-    serde_json::from_str(&text).ok()
+    serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()
 }
 
 /// Ищет поле спецификации с учётом цепочки `base_spec`.

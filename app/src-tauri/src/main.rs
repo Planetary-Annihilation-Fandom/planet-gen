@@ -31,25 +31,42 @@ fn generate(planet: Value, max_slope: Option<f32>, media: Option<String>) -> Pla
     generate_from_json(&planet, &media, opts)
 }
 
-/// Файл системы и номер планеты из командной строки: `planet-gen-app <система.pas> [--planet N]`.
+/// Изображение `.papa` по пути игры: 8 байт ширины и высоты (u32 LE), затем RGBA8.
+/// Сторона уменьшается до 512 — просмотрщику больше не нужно.
+#[tauri::command(async)]
+fn texture(path: String, media: Option<String>) -> Result<tauri::ipc::Response, String> {
+    let media: std::path::PathBuf = media.map(Into::into).unwrap_or_else(config::default_media);
+    let img = planet_gen::papa::read_image(&media, &path)?.downscale_to(512);
+    let mut out = Vec::with_capacity(8 + img.rgba.len());
+    out.extend_from_slice(&img.width.to_le_bytes());
+    out.extend_from_slice(&img.height.to_le_bytes());
+    out.extend_from_slice(&img.rgba);
+    Ok(tauri::ipc::Response::new(out))
+}
+
+/// Файл системы и номер планеты из командной строки:
+/// `planet-gen-app <система.pas> [--planet N]` или `planet-gen-app --random <архетип>`.
 #[tauri::command]
 fn startup_args() -> Value {
     let mut path = None;
     let mut planet = 0u64;
+    let mut random: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--planet" {
             planet = args.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+        } else if a == "--random" {
+            random = args.next();
         } else if !a.starts_with('-') && path.is_none() {
             path = Some(a);
         }
     }
-    serde_json::json!({ "path": path, "planet": planet })
+    serde_json::json!({ "path": path, "planet": planet, "random": random })
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![default_systems, read_system, generate, startup_args])
+        .invoke_handler(tauri::generate_handler![default_systems, read_system, generate, texture, startup_args])
         .run(tauri::generate_context!())
         .expect("запуск окна planet-gen");
 }

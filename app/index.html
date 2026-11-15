@@ -3,31 +3,76 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>planet-gen</title>
+    <title>Генератор планет</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <aside id="panel">
-      <h1>planet-gen</h1>
-      <section>
-        <label>Система <select id="system"></select></label>
-        <label>Планета <select id="planet"></select></label>
-        <label class="file">Открыть .pas <input id="file" type="file" accept=".pas,.json" /></label>
+      <header>
+        <h1>Генератор планет</h1>
+        <div class="tabs" role="tablist">
+          <button id="modeExisting" class="on" role="tab">Существующая</button>
+          <button id="modeRandom" role="tab">Случайная</button>
+        </div>
+      </header>
+
+      <section id="existing">
+        <div class="section">Планета из системы</div>
+        <label class="field">Система <select id="system"></select></label>
+        <label class="field">Планета <select id="planet"></select></label>
+        <label class="field file">Файл системы <span class="filebtn">Открыть .pas<input id="file" type="file" accept=".pas,.json" /></span></label>
+        <p class="hint">Кисти CSG и параметры берутся из системы. Поля ниже можно изменить перед генерацией.</p>
       </section>
-      <section id="params"></section>
-      <section>
-        <label>Уклон для металла, ° <input id="slope" type="number" value="40" step="1" /></label>
-        <button id="run">Сгенерировать</button>
+
+      <section id="random" hidden>
+        <div class="section">Случайная планета</div>
+        <label class="field">Архетип <select id="rndBiome"></select></label>
+        <label class="field">Радиус, от и до
+          <span class="pair"><input id="rndRadiusMin" type="number" value="300" step="50" /><input id="rndRadiusMax" type="number" value="900" step="50" /></span>
+        </label>
+        <button id="reroll">Новая планета</button>
+        <p class="hint">Зерно и параметры выбираются случайно в пределах редактора систем игры. Процедурные кисти биома игра добавляет сама; здесь их нет.</p>
       </section>
-      <section class="toggles">
-        <label><input id="showWater" type="checkbox" checked /> вода и лава</label>
-        <label><input id="showMetal" type="checkbox" checked /> металл</label>
-        <label><input id="showCand" type="checkbox" /> кандидаты</label>
-        <label><input id="showWire" type="checkbox" /> сетка</label>
-      </section>
-      <pre id="stats"></pre>
+
+      <details id="paramsBox" open>
+        <summary>Параметры генератора</summary>
+        <div id="params"></div>
+      </details>
+
+      <div class="actions">
+        <label class="field inline">Уклон для металла, ° <input id="slope" type="number" value="40" step="1" /></label>
+        <button id="run" class="primary">Сгенерировать</button>
+      </div>
     </aside>
-    <main id="view"></main>
+
+    <main>
+      <div id="view"></div>
+      <div id="topbar">
+        <div id="title"><div class="main">—</div><div class="sub"></div></div>
+        <div id="tools">
+          <button id="tTex" class="on" title="Текстуры биомов игры">Текстуры</button>
+          <button id="tWater" class="on" title="Вода и лава">Вода</button>
+          <button id="tCsg" class="on" title="Кисти сложения CSG">CSG</button>
+          <button id="tSub" title="Контуры кистей вычитания">Вычитание</button>
+          <button id="tMetal" class="on" title="Металлические точки">Металл</button>
+          <button id="tCand" title="Кандидаты металла">Кандидаты</button>
+          <button id="tWire" title="Сетка поверхности">Сетка</button>
+        </div>
+      </div>
+      <div id="status" hidden></div>
+      <div id="toast" hidden></div>
+    </main>
+
+    <aside id="card">
+      <div class="kind">Результат</div>
+      <h2 id="cardTitle">—</h2>
+      <table id="stats"></table>
+      <h3>Подбиомы</h3>
+      <div id="biomes" class="biomes"></div>
+      <h3>Кисти CSG</h3>
+      <div id="csg" class="hint"></div>
+      <div id="note" class="hint gap"></div>
+    </aside>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
