@@ -384,9 +384,8 @@ export function createScene(host) {
     planetRadius = p.radius;
     if (template) project = createSurfaceProjector(p);
     const dist = p.max_radius * 3.2 * Math.max(1, 1/camera.aspect);
-    if (camera.position.length() < p.max_radius * 1.2 || camera.position.length() > dist * 3) {
-      camera.position.setLength(dist);
-    }
+    controls.target.set(0, 0, 0);
+    camera.position.setLength(dist);
     controls.minDistance = p.max_radius * 1.05;
   }
 
