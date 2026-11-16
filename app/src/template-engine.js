@@ -1,4 +1,5 @@
-// Правила JSON затем экземпляры зон и связей. Геометрия базовой планеты здесь не меняется.
+import { analyzeGraph } from "./graph-model.js";
+// JSON-правила задают экземпляры зон и связей. Геометрия основы не меняется.
 export const KINDS = { spawn: "#24a56a", metal: "#e5ae22", blocker: "#e34c50", ramp: "#4089e8" };
 const anchors = ["players", "fronts", "north", "south"];
 const ident = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
@@ -12,6 +13,7 @@ export function validateTemplate(t) {
   if (!Number.isInteger(t.players.default) || !finite(t.players.default, t.players.min, t.players.max)) fail("неверное число игроков по умолчанию");
   if (!Array.isArray(t.nodes) || !t.nodes.length || t.nodes.length > 40 || !Array.isArray(t.links) || t.links.length > 100) fail("нужны 1–40 нод и массив links до 100 связей");
   const ids = new Set();
+  if (!t.nodes.some((n) => n.kind === "spawn")) fail("нужна хотя бы одна стартовая нода spawn");
   for (const n of t.nodes) {
     if (!ident.test(n.id ?? "") || ids.has(n.id)) fail("id нод должны быть уникальны");
     ids.add(n.id);
@@ -22,6 +24,7 @@ export function validateTemplate(t) {
     if (n.chain && (n.kind !== "blocker" || !Number.isInteger(n.chain.count) || !finite(n.chain.count, 1, 10) || !finite(n.chain.step, 0.01, n.radius * 2) || !finite(n.chain.gap, n.radius, 0.5))) fail(`неверная цепочка ${n.id}: шаг не должен превышать диаметр блокера`);
   }
   for (const l of t.links) if (!ids.has(l.from) || !ids.has(l.to) || !["owner", "adjacent", "all"].includes(l.match)) fail("неверная связь");
+  analyzeGraph(t);
   return t;
 }
 
@@ -51,8 +54,10 @@ export function applyTemplate(template, { players, seed, metalScale = 1 }) {
     const length = Math.hypot(x, y);
     return length ? norm(add(mul(d, Math.cos(length)), mul(add(mul(tangent, x), mul(up, y)), Math.sin(length) / length))) : d;
   };
-  const zones = [], byNode = new Map();
-  for (const n of template.nodes) {
+  const graph = analyzeGraph(template);
+  const zones = [], byNode = new Map(template.nodes.map((n) => [n.id, []]));
+  for (const n of graph.order) {
+    if (!graph.active.has(n.id)) continue;
     const count = ["players", "fronts"].includes(n.anchor) ? players : 1;
     const instances = [];
     for (let i = 0; i < count; i++) {
@@ -87,7 +92,7 @@ export function applyTemplate(template, { players, seed, metalScale = 1 }) {
     links.push({ id: `${from.id}>${to.id}`, from: from.id, to: to.id, fromNode: from.nodeId, toNode: to.nodeId });
   }
   return { template: structuredClone(template), parameters: { players, seed, metalScale }, zones, links,
-    debug: { rules: template.nodes.length, zones: zones.length, metal: zones.reduce((s, z) => s + z.points.length, 0), balance: "Демонстрация структуры; проходимость и баланс не проверяются." } };
+    debug: { rules: template.nodes.length, inactiveNodes: template.nodes.filter((n) => !graph.active.has(n.id)).map((n) => n.id), zones: zones.length, metal: zones.reduce((s, z) => s + z.points.length, 0), balance: "Демонстрация структуры; проходимость и баланс не проверяются." } };
 }
 
 export function cleanBasePlanet(result, parameters) {

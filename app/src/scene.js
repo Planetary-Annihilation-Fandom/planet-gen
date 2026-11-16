@@ -212,7 +212,7 @@ export function createScene(host) {
 
   const group = new THREE.Group();
   scene.add(group);
-  let parts = {};
+  let parts = {}, previousAspect = null;
   let templateLayer = null, project = null, planetRadius = 500, onPick = () => {};
   const picker = new THREE.Raycaster();
   let pointerStart = null;
@@ -234,6 +234,10 @@ export function createScene(host) {
     const h = host.clientHeight;
     renderer.setSize(w, h);
     camera.aspect = w / Math.max(h, 1);
+    if (previousAspect && camera.aspect > 0) {
+      camera.position.multiplyScalar(Math.max(1, 1/camera.aspect)/Math.max(1, 1/previousAspect));
+    }
+    previousAspect = camera.aspect;
     camera.updateProjectionMatrix();
   }
   new ResizeObserver(resize).observe(host);

@@ -4,9 +4,43 @@ import { readFileSync } from "node:fs";
 import * as THREE from "three";
 import { applyTemplate, cleanBasePlanet, validateTemplate } from "../src/template-engine.js";
 import { createSurfaceProjector, area, band, disposeObject } from "../src/primitives.js";
+import { analyzeGraph, layoutGraph, connectNodes, disconnectNodes } from "../src/graph-model.js";
 
 const templates = ["neighbor_fronts", "shared_regions"].map((id) => JSON.parse(readFileSync(new URL(`../src/templates/${id}.json`, import.meta.url))));
 const dot = (a, b) => a.reduce((s, v, i) => s + v*b[i], 0);
+test("отключение ветви и переподключение действительно меняют генерацию", () => {
+  const original = templates[0], p = { players: 4, seed: 42 };
+  const detached = disconnectNodes(original, "starts", "front");
+  const result = applyTemplate(detached, p);
+  assert.deepEqual(new Set(result.zones.map((z) => z.nodeId)), new Set(["starts", "home"]));
+  assert.deepEqual(new Set(result.debug.inactiveNodes), new Set(["front", "passes", "walls"]));
+  const connected = connectNodes(detached, "home", "front");
+  assert.equal(applyTemplate(connected, p).zones.length, applyTemplate(original, p).zones.length);
+  assert.equal(connected.links.find((l) => l.to === "front").match, "adjacent");
+  assert.equal(original.links.length, 4);
+});
+test("единственный вход заменяется атомарно, циклы и входы спавнов запрещены", () => {
+  const original = templates[0];
+  const changed = connectNodes(original, "home", "passes");
+  assert.equal(changed.links.filter((l) => l.to === "passes").length, 1);
+  assert.equal(changed.links.find((l) => l.to === "passes").from, "home");
+  assert.equal(original.links.find((l) => l.to === "passes").from, "front");
+  assert.throws(() => connectNodes(original, "walls", "front"), /цикл/);
+  assert.throws(() => connectNodes(original, "home", "starts"), /нет входа/);
+  assert.throws(() => connectNodes(original, "home", "home"), /собой/);
+});
+test("раскладка следует связям, даже если JSON-ноды перемешаны", () => {
+  for (const t of templates) {
+    const reversed = { ...t, nodes: [...t.nodes].reverse() };
+    const layout = layoutGraph(reversed);
+    assert.equal(layout.order[0].kind, "spawn");
+    for (const l of t.links) {
+      assert.ok(layout.positions.get(l.from).y < layout.positions.get(l.to).y);
+      assert.equal(layout.depths.get(l.to), layout.depths.get(l.from)+1);
+    }
+    assert.equal(analyzeGraph(t).active.size, t.nodes.length);
+  }
+});
 for (const t of templates) test(`${t.id}: воспроизводимость и масштабирование FFA`, () => {
   for (const players of [3, 4, 6, 12]) {
     const p = { players, seed: 127, metalScale: 1 };

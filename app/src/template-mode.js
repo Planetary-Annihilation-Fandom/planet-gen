@@ -3,23 +3,43 @@ import shared from "./templates/shared_regions.json";
 import { validateTemplate, applyTemplate, cleanBasePlanet } from "./template-engine.js";
 import { createTemplateGraph } from "./template-graph.js";
 import { iconSVG } from "./icons.js";
+import { connectNodes, disconnectNodes } from "./graph-model.js";
+import { setupGraphPanel } from "./graph-panel.js";
 
 const $ = (id) => document.getElementById(id);
 const STORAGE = "planet-gen.templates.v1";
 export function createTemplateMode(scene, toast) {
-  let templates = [neighbors, shared], base = null, applied = null, selected = null, active = false, timer;
+  let templates = [structuredClone(neighbors), structuredClone(shared)], base = null, applied = null, selected = null, active = false, timer;
   const source = { name: "Основа шаблона", planet: { seed: 42, radius: 500, heightRange: 18, waterHeight: 0, waterDepth: 0, biomeScale: 65, temperature: 80, metalDensity: 0, metalClusters: 0, metalSpotLimit: 0, biome: "desert", symmetryType: "none", symmetricalMetal: false, mass: 10000 }, planetCSG: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE) ?? "[]");
-    if (!Array.isArray(saved) || saved.length > 50) throw new Error("Некорректный список шаблонов");
-    for (const t of saved) { validateTemplate(t); if (!templates.some((v) => v.id === t.id)) templates.push(t); }
+    if (!Array.isArray(saved) || saved.length > 52) throw new Error("Некорректный список шаблонов");
+    for (const t of saved) {
+      validateTemplate(t);
+      const index = templates.findIndex((v) => v.id === t.id);
+      if (index < 0) templates.push(t); else templates[index] = t;
+    }
   } catch (e) { toast(`Сохранённые шаблоны не загружены: ${e.message}`, true); }
-  const graph = createTemplateGraph($("nodeCanvas"), select);
+  const graph = createTemplateGraph($("nodeCanvas"), select, {
+    connect(from, to) { changeConnections(connectNodes(template(), from, to)); },
+    remove(from, to) {
+      try { changeConnections(disconnectNodes(template(), from, to)); }
+      catch (err) { toast(err.message, true); }
+    },
+    error(message) { toast(message, true); },
+  });
+  setupGraphPanel($("templateCard"), $("graphSplitter"));
   for (const kind of ["spawn", "metal", "blocker", "ramp"]) {
     const label = document.querySelector(`[data-applied-layer="${kind}"]`).closest("label");
     label.insertBefore(iconSVG(kind), label.childNodes[1]);
   }
   const template = () => templates.find((t) => t.id === $("templateSelect").value) ?? templates[0];
+  function changeConnections(next) {
+    validateTemplate(next);
+    const updated = templates.map((t) => t.id === next.id ? next : t);
+    localStorage.setItem(STORAGE, JSON.stringify(updated));
+    templates = updated; regenerate();
+  }
   function fillList(id = templates[0].id) {
     $("templateSelect").replaceChildren(...templates.map((t) => new Option(t.name, t.id)));
     $("templateSelect").value = id;
@@ -53,7 +73,8 @@ export function createTemplateMode(scene, toast) {
       if (base && active) { applied.result = scene.setApplied(applied, select); layers(); }
       graph.show(applied); select(selected);
       $("appliedStats").textContent = `${applied.parameters.players} игроков   ${applied.zones.length} областей   ${applied.debug.metal} металла   ${(performance.now()-t0).toFixed(0)} мс`;
-      $("templateNotice").textContent = base ? applied.debug.balance : "Сгенерируйте основу, чтобы увидеть шаблон на планете.";
+      const disconnected = applied.debug.inactiveNodes.length;
+      $("templateNotice").textContent = (base ? applied.debug.balance : "Сгенерируйте основу, чтобы увидеть шаблон на планете.") + (disconnected ? ` Отключено нод: ${disconnected}. Подключите их к ветви спавна.` : "");
       $("exportResult").disabled = !base;
     } catch (e) { $("templateNotice").textContent = e.message; }
   }
@@ -67,7 +88,7 @@ export function createTemplateMode(scene, toast) {
     if (templates.some((v) => v.id === t.id)) throw new Error(`Шаблон ${t.id} уже существует; используйте другой id`);
     if (templates.length >= 52) throw new Error("Сохранено слишком много шаблонов");
     const next = [...templates, t];
-    localStorage.setItem(STORAGE, JSON.stringify(next.slice(2)));
+    localStorage.setItem(STORAGE, JSON.stringify(next));
     templates = next; fillList(t.id); syncTemplate();
   }
   fillList(); syncTemplate();
