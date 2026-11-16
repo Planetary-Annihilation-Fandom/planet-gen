@@ -35,6 +35,30 @@ fn generate(planet: Value, max_slope: Option<f32>, media: Option<String>) -> Pla
     generate_from_json(&planet, &media, opts)
 }
 
+/// Сухая основа для шаблона: без жидкостей, CSG и исходного металла.
+#[tauri::command(async)]
+fn generate_base(planet: Value, media: Option<String>) -> Result<Planet, String> {
+    let media = media_of(media);
+    let mut g = config::generator_object(&planet).clone();
+    let radius = g.get("radius").and_then(Value::as_f64).unwrap_or(500.0);
+    if !radius.is_finite() || !(100.0..=1200.0).contains(&radius) {
+        return Err("Радиус основы должен быть от 100 до 1200".into());
+    }
+    for (key, value) in [("waterHeight", 0), ("waterDepth", 0), ("metalDensity", 0), ("metalClusters", 0), ("metalSpotLimit", 0)] {
+        g[key] = value.into();
+    }
+    let biome = g.get("biome").and_then(Value::as_str).unwrap_or("desert");
+    let mut arch = config::load_archetype(&media, biome);
+    arch.enable_water = false;
+    arch.enable_lava = false;
+    let bp = config::PlanetBp::from_generator(&g, arch);
+    let mut result = planet_gen::generate(&bp, &media, &[], MetalOptions::default());
+    result.metal.spots.clear();
+    result.metal.candidates.clear();
+    result.metal.limit_is_random = false;
+    Ok(result)
+}
+
 /// Изображение `.papa` по пути игры: 8 байт ширины и высоты (u32 LE), затем RGBA8.
 /// Сторона уменьшается до 512 — просмотрщику больше не нужно.
 #[tauri::command(async)]
@@ -54,22 +78,25 @@ fn startup_args() -> Value {
     let mut path = None;
     let mut planet = 0u64;
     let mut random: Option<String> = None;
+    let mut templates = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--planet" {
             planet = args.next().and_then(|v| v.parse().ok()).unwrap_or(0);
         } else if a == "--random" {
             random = args.next();
+        } else if a == "--templates" {
+            templates = true;
         } else if !a.starts_with('-') && path.is_none() {
             path = Some(a);
         }
     }
-    serde_json::json!({ "path": path, "planet": planet, "random": random })
+    serde_json::json!({ "path": path, "planet": planet, "random": random, "templates": templates })
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![default_systems, read_system, generate, texture, startup_args])
+        .invoke_handler(tauri::generate_handler![default_systems, read_system, generate, generate_base, texture, startup_args])
         .run(tauri::generate_context!())
         .expect("запуск окна planet-gen");
 }

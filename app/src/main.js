@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createScene, loadTexture } from "./scene.js";
+import { createTemplateMode } from "./template-mode.js";
 
 // Поля генератора системы, которые можно править перед генерацией.
 const FIELDS = [
@@ -27,6 +28,8 @@ let systems = [];
 let mode = "existing";
 let current = null; // объект планеты системы: { name, planet, planetCSG, ... }
 let randomPlanet = null;
+let busy = false;
+const templateMode = createTemplateMode(scene, toast);
 
 function buildParams() {
   const box = $("params");
@@ -62,7 +65,7 @@ function fillParams(g) {
 }
 
 function readParams() {
-  const src = mode === "random" ? randomPlanet : current;
+  const src = mode === "templates" ? templateMode.source : mode === "random" ? randomPlanet : current;
   const g = { ...(src?.planet ?? {}) };
   for (const [key, , type] of FIELDS) {
     const el = $(`p_${key}`);
@@ -72,6 +75,11 @@ function readParams() {
     } else g[key] = el.value;
   }
   return g;
+}
+
+function setBusy(value) {
+  busy = value;
+  for (const id of ["run", "modeExisting", "modeRandom", "modeTemplates"]) $(id).disabled = value;
 }
 
 function setSystems(list, select = 0) {
@@ -87,7 +95,7 @@ function selectSystem(i) {
   const s = systems[i];
   const sel = $("planet");
   sel.innerHTML = "";
-  (s?.planets ?? []).forEach((p, j) => sel.add(new Option(`${p.name ?? j} · ${p.planet?.biome ?? "?"}`, j)));
+  (s?.planets ?? []).forEach((p, j) => sel.add(new Option(`${p.name ?? j}  ${p.planet?.biome ?? "?"}`, j)));
   selectPlanet(0);
 }
 
@@ -125,16 +133,46 @@ function rollRandom() {
   fillParams(planet);
 }
 
-function setMode(m) {
+async function setMode(m) {
+  if (busy) return;
+  const previous = mode;
+  if (previous === "templates") templateMode.leave();
   mode = m;
   $("modeExisting").classList.toggle("on", m === "existing");
   $("modeRandom").classList.toggle("on", m === "random");
+  $("modeTemplates").classList.toggle("on", m === "templates");
+  for (const [id, value] of [["modeExisting", "existing"], ["modeRandom", "random"], ["modeTemplates", "templates"]]) $(id).setAttribute("aria-selected", m === value);
   $("existing").hidden = m !== "existing";
   $("random").hidden = m !== "random";
+  $("templates").hidden = m !== "templates";
+  $("templateCard").hidden = m !== "templates";
+  $("card").hidden = m === "templates";
+  document.body.classList.toggle("template-mode", m === "templates");
+  $("run").textContent = m === "templates" ? "Сгенерировать основу" : "Сгенерировать";
+  $("paramsBox").querySelector("summary").textContent = m === "templates" ? "Параметры основы" : "Параметры генератора";
+  $("slope").closest("label").hidden = m === "templates";
+  for (const id of ["tWater", "tCsg", "tSub", "tMetal", "tCand"]) $(id).hidden = m === "templates";
+  for (const key of ["waterHeight", "waterDepth", "metalDensity", "metalClusters", "metalSpotLimit", "symmetricalMetal"]) $(`p_${key}`).closest("label").hidden = m === "templates";
+  if (m === "templates") {
+    fillParams(templateMode.source.planet);
+    templateMode.enter();
+    try {
+      setBusy(true);
+      let restored;
+      try { restored = await templateMode.restore(); }
+      finally { setBusy(false); }
+      if (restored) {
+        applyToggles();
+        showResult(restored, "Основа шаблона", "основа шаблона  без воды и CSG биома", 0);
+      } else await run();
+    } catch (e) { toast(String(e), true); }
+    return;
+  }
   if (m === "random") {
     if (!randomPlanet) rollRandom();
     else fillParams(randomPlanet.planet);
   } else if (current) fillParams(current.planet ?? {});
+  if (previous === "templates") run();
 }
 
 function toast(text, err = false) {
@@ -147,28 +185,30 @@ function toast(text, err = false) {
 }
 
 async function run() {
-  const src = mode === "random" ? randomPlanet : current;
-  if (!src) return;
-  const btn = $("run");
-  btn.disabled = true;
+  const src = mode === "templates" ? templateMode.source : mode === "random" ? randomPlanet : current;
+  if (!src || busy) return;
+  const parameters = readParams();
+  if (mode === "templates" && (!Number.isFinite(parameters.radius) || parameters.radius < 100 || parameters.radius > 1200)) { toast("Для прототипа выберите радиус от 100 до 1200.", true); return; }
+  setBusy(true);
   $("status").hidden = false;
   $("status").textContent = "Генерация…";
   try {
     const t0 = performance.now();
-    const planet = await invoke("generate", {
-      planet: { planet: readParams(), planetCSG: src.planetCSG ?? [] },
+    let planet = await invoke(mode === "templates" ? "generate_base" : "generate", {
+      planet: { planet: parameters, planetCSG: mode === "templates" ? [] : src.planetCSG ?? [] },
       maxSlope: Number($("slope").value),
     });
     const ms = performance.now() - t0;
     $("status").textContent = "Загрузка текстур…";
-    await scene.show(planet);
+    if (mode === "templates") planet = await templateMode.accept(planet, parameters);
+    else await scene.show(planet);
     applyToggles();
-    const sysName = mode === "random" ? "случайная планета" : systems[$("system").value]?.name ?? "";
+    const sysName = mode === "templates" ? "основа шаблона  без воды и CSG биома" : mode === "random" ? "случайная планета" : systems[$("system").value]?.name ?? "";
     showResult(planet, src.name ?? "планета", sysName, ms);
   } catch (e) {
     toast(String(e), true);
   } finally {
-    btn.disabled = false;
+    setBusy(false);
     $("status").hidden = true;
   }
 }
@@ -176,7 +216,7 @@ async function run() {
 function showResult(p, name, sysName, ms) {
   const m = p.metal;
   $("title").querySelector(".main").textContent = name;
-  $("title").querySelector(".sub").textContent = `${sysName} · ${p.biome}, радиус ${p.radius}`;
+  $("title").querySelector(".sub").textContent = `${sysName}  ${p.biome}, радиус ${p.radius}`;
   $("cardTitle").textContent = name;
   const rows = [
     ["Архетип", p.biome],
@@ -246,6 +286,7 @@ buildParams();
 for (const a of ARCHETYPES) $("rndBiome").add(new Option(a, a));
 $("modeExisting").onclick = () => setMode("existing");
 $("modeRandom").onclick = () => setMode("random");
+$("modeTemplates").onclick = () => setMode("templates");
 $("reroll").onclick = () => {
   rollRandom();
   run();
@@ -288,7 +329,10 @@ if (!window.__TAURI_INTERNALS__) {
         $("planet").value = args.planet;
         selectPlanet(args.planet);
       } else setSystems(list);
-      if (args.random) {
+      if (args.templates) {
+        await setMode("templates");
+        return;
+      } else if (args.random) {
         $("rndBiome").value = args.random;
         setMode("random");
       }

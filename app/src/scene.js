@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { invoke } from "@tauri-apps/api/core";
+import { createSurfaceProjector } from "./primitives.js";
+import { createTemplateLayer } from "./template-layer.js";
 
 const LAYER = 512; // сторона слоя массива текстур
 const MAX_BIOMES = 8; // два атрибута vec4 весов
@@ -211,6 +213,21 @@ export function createScene(host) {
   const group = new THREE.Group();
   scene.add(group);
   let parts = {};
+  let templateLayer = null, project = null, planetRadius = 500, onPick = () => {};
+  const picker = new THREE.Raycaster();
+  let pointerStart = null;
+  renderer.domElement.addEventListener("pointerdown", (e) => { pointerStart = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener("pointerup", (e) => {
+    if (!templateLayer || !pointerStart || Math.hypot(e.clientX-pointerStart[0], e.clientY-pointerStart[1]) > 5) return;
+    const r = renderer.domElement.getBoundingClientRect();
+    picker.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1, -(e.clientY-r.top)/r.height*2+1), camera);
+    group.updateMatrixWorld(true);
+    // Поверхность участвует в проверке, чтобы нельзя было выбрать область на обратной стороне.
+    const hits = picker.intersectObjects([parts.surface, ...templateLayer.zones.children.filter((g) => g.visible)], true);
+    let o = hits[0]?.object;
+    while (o && !o.userData.nodeId) o = o.parent;
+    onPick(o?.userData.nodeId ?? null);
+  });
 
   function resize() {
     const w = host.clientWidth;
@@ -228,6 +245,8 @@ export function createScene(host) {
   });
 
   function clear() {
+    templateLayer?.dispose();
+    templateLayer = null; project = null;
     group.traverse((o) => {
       o.geometry?.dispose();
       for (const m of [o.material].flat()) {
@@ -241,7 +260,7 @@ export function createScene(host) {
     parts = {};
   }
 
-  async function show(p) {
+  async function show(p, { template = false } = {}) {
     const layers = await biomeArray(p.biomes);
     const brushMaps = await Promise.all(
       p.csg.brushes.map((b) =>
@@ -249,7 +268,7 @@ export function createScene(host) {
       ),
     );
     clear();
-    // Игра использует систему, где z направлена к полюсу; в three.js полюс — ось y.
+    // Игра использует систему, где z направлена к полюсу; в three.js полюс: ось y.
     group.rotation.set(-Math.PI / 2, 0, 0);
 
     const geo = new THREE.BufferGeometry();
@@ -357,7 +376,9 @@ export function createScene(host) {
     );
     group.add(cand);
 
-    parts = { surfaceMat, wire, fluids, metal, cand, add, subtract };
+    parts = { surfaceMat, surface, wire, fluids, metal, cand, add, subtract };
+    planetRadius = p.radius;
+    if (template) project = createSurfaceProjector(p);
     const dist = p.max_radius * 3.2;
     if (camera.position.length() < p.max_radius * 1.2 || camera.position.length() > dist * 3) {
       camera.position.setLength(dist);
@@ -376,5 +397,16 @@ export function createScene(host) {
     parts.subtract.visible = o.subtract;
   }
 
-  return { show, toggle };
+  function setApplied(data, pick) {
+    if (templateLayer) { group.remove(templateLayer.root); templateLayer.dispose(); templateLayer = null; }
+    if (!data || !project) return;
+    templateLayer = createTemplateLayer(project, data, planetRadius);
+    group.add(templateLayer.root);
+    onPick = pick;
+    return templateLayer.placements;
+  }
+  return { show, toggle, setApplied,
+    selectNode: (id) => templateLayer?.select(id),
+    toggleApplied: (options) => templateLayer?.toggle(options),
+  };
 }

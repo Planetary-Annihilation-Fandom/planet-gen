@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "shared_regions",
+  "name": "Общие области борьбы",
+  "description": "Стартовые области по поясу планеты, домашняя экономика и два общих месторождения. К ним ведут проходы между перекрывающимися блокерами.",
+  "players": { "min": 3, "max": 12, "default": 6 },
+  "nodes": [
+    { "id": "starts", "name": "Стартовые области", "kind": "spawn", "anchor": "players", "radius": 0.10 },
+    { "id": "home", "name": "Домашний металл", "kind": "metal", "anchor": "players", "offset": [0.16, 0], "radius": 0.075, "spots": 7 },
+    { "id": "north", "name": "Северное месторождение", "kind": "metal", "anchor": "north", "radius": 0.23, "spots": 20 },
+    { "id": "south", "name": "Южное месторождение", "kind": "metal", "anchor": "south", "radius": 0.23, "spots": 20 },
+    { "id": "walls", "name": "Блокеры у входов", "kind": "blocker", "anchor": "players", "offset": [0, 0.53], "radius": 0.06, "chain": { "count": 3, "step": 0.095, "gap": 0.14 } },
+    { "id": "passes", "name": "Входы к общему металлу", "kind": "ramp", "anchor": "players", "offset": [0, 0.53], "radius": 0.07 }
+  ],
+  "links": [
+    { "from": "starts", "to": "home", "match": "owner" },
+    { "from": "starts", "to": "passes", "match": "owner" },
+    { "from": "passes", "to": "north", "match": "all" },
+    { "from": "starts", "to": "south", "match": "all" },
+    { "from": "passes", "to": "walls", "match": "owner" }
+  ]
+}
