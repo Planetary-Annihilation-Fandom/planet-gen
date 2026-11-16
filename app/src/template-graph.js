@@ -89,17 +89,38 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
     if (e.target.closest("[data-edge]")) return;
     e.preventDefault();
     const node = e.target.closest("[data-node]");
-    if (node) { onSelect(node.dataset.node); return; }
-    const canvas = point(e), r = host.getBoundingClientRect();
+    const canvas = point(e);
+    if (node) onSelect(node.dataset.node);
+    const r = host.getBoundingClientRect();
     menu.replaceChildren();
+    const command = (title, action, key, disabled = false) => {
+      const button = document.createElement("button"); button.textContent = title; button.dataset.action = key; button.disabled = disabled;
+      button.onclick = () => { menu.hidden = true; action?.(); }; menu.append(button);
+    };
+    const heading = document.createElement("div"); heading.className = "node-menu-title";
+    heading.textContent = node ? "Создать дочернюю ноду" : "Создать ноду"; menu.append(heading);
     for (const [kind, type] of Object.entries(NODE_TYPES)) {
       const button = document.createElement("button"); button.append(iconSVG(kind), type.title);
-      button.onclick = () => { menu.hidden = true; actions.create?.(kind, { x: canvas.x, y: canvas.y }); };
+      button.dataset.kind = kind;
+      button.onclick = () => { menu.hidden = true; actions.create?.(kind, node ? undefined : { x: canvas.x, y: canvas.y }, node?.dataset.node); };
       menu.append(button);
     }
-    menu.style.left = `${Math.max(0, Math.min(e.clientX-r.left, r.width-170))}px`;
-    menu.style.top = `${Math.max(0, Math.min(e.clientY-r.top, r.height-210))}px`;
+    if (node) {
+      menu.append(document.createElement("hr"));
+      command("Копировать ноду", () => actions.duplicate?.(node.dataset.node), "duplicate");
+      command("Удалить ноду", () => actions.deleteNode?.(node.dataset.node), "delete");
+    }
+    menu.append(document.createElement("hr"));
+    const history = actions.history?.();
+    command("Отменить", actions.undo, "undo", !history?.past.length);
+    command("Повторить", actions.redo, "redo", !history?.future.length);
+    menu.append(document.createElement("hr"));
+    command("Разложить граф", actions.arrange, "arrange");
+    command("Вписать граф", fit, "fit");
+    menu.style.maxHeight = `${Math.max(100, r.height-12)}px`;
     menu.hidden = false;
+    menu.style.left = `${Math.max(0, Math.min(e.clientX-r.left, r.width-menu.offsetWidth))}px`;
+    menu.style.top = `${Math.max(0, Math.min(e.clientY-r.top, r.height-menu.offsetHeight))}px`;
   });
   document.addEventListener("pointerdown", (e) => { if (!menu.contains(e.target)) menu.hidden = true; });
   root.addEventListener("keydown", (e) => { if (e.key === "Escape") menu.hidden = true; });
@@ -126,6 +147,7 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
   }
   function show(next) {
     cancel();
+    menu.hidden = true;
     const changed = data?.template.id !== next.template.id;
     data = next; layout = layoutGraph(data.template); root.replaceChildren();
     for (const l of data.template.links) {

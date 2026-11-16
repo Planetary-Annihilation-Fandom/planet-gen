@@ -27,26 +27,30 @@ export function createTemplateMode(scene,toast) {
    connect:(from,to)=>commit(connectNodes(template(),from,to)),
    remove:(from,to)=>safely(()=>commit(disconnectNodes(template(),from,to))),
    move:(id,canvas)=>safely(()=>{const t=structuredClone(template());t.nodes.find(n=>n.id===id).canvas=canvas;commit(t,{generate:false});}),
-   create:(kind,canvas)=>safely(()=>addNode(kind,canvas,false)),
+   create:(kind,canvas,parent)=>safely(()=>addNode(kind,canvas,parent)),
+   duplicate:id=>safely(()=>duplicateNode(id)),
+   deleteNode:id=>safely(()=>removeNode(id)),
+   undo:()=>safely(()=>travel("undo")), redo:()=>safely(()=>travel("redo")),
+   history:()=>history(), arrange:()=>safely(()=>arrange()),
    error:message=>toast(message,true),
  });
  const inspector=createNodeInspector($("nodeFields"),{
    change(id,path,value){const t=structuredClone(template()),n=t.nodes.find(n=>n.id===id);setField(n,path,value);if(path==="pattern"&&value==="gate")n.chain.step=Math.min(n.chain.step,n.radius*1.8);commit(t);},
-   remove:id=>safely(()=>{const t=structuredClone(template());t.nodes=t.nodes.filter(n=>n.id!==id);t.links=t.links.filter(l=>l.from!==id&&l.to!==id);commit(t);select(null);}),
-   duplicate:id=>safely(()=>{
+   remove:id=>safely(()=>removeNode(id)),
+   duplicate:id=>safely(()=>duplicateNode(id)),
+ });
+ function removeNode(id){const t=structuredClone(template());t.nodes=t.nodes.filter(n=>n.id!==id);t.links=t.links.filter(l=>l.from!==id&&l.to!==id);commit(t);select(null);}
+ function duplicateNode(id){
      const t=structuredClone(template()),original=t.nodes.find(n=>n.id===id),fresh=createNode(original.kind,t.nodes);
      const copy={...structuredClone(original),id:fresh.id,name:(original.name+" копия").slice(0,100),canvas:graph.suggest(id)};
      t.nodes.push(copy);commit(t);select(copy.id);graph.reveal(copy.id);
-   }),
- });
+ }
  setupGraphPanel($("templateCard"),$("graphSplitter"));
  for(const kind of Object.keys(NODE_TYPES)) {
-   $("newNodeType").add(new Option(NODE_TYPES[kind].title,kind));
    const checkbox=document.querySelector('[data-applied-layer="'+kind+'"]');
    if(checkbox){const label=checkbox.closest("label");label.insertBefore(iconSVG(kind),label.childNodes[1]);}
  }
  function history(){if(!histories.has(template().id))histories.set(template().id,{past:[],future:[]});return histories.get(template().id);}
- function updateHistory(){const h=history();$("undoGraph").disabled=!h.past.length;$("redoGraph").disabled=!h.future.length;}
  function save(next){const updated=templates.map(t=>t.id===next.id?next:t);localStorage.setItem(STORAGE,JSON.stringify(updated));templates=updated;}
  function compile(t) {
    try{return applyTemplate(t,params());}
@@ -59,25 +63,26 @@ export function createTemplateMode(scene,toast) {
    save(next);
    if(remember){const h=history();h.past.push(structuredClone(old));if(h.past.length>50)h.past.shift();h.future=[];}
    if(selected&&!next.nodes.some(n=>n.id===selected))selected=null;
-   applied=nextApplied;render(generate);updateHistory();
+   applied=nextApplied;render(generate);
  }
  function travel(direction) {
    const h=history(),from=direction==="undo"?h.past:h.future,to=direction==="undo"?h.future:h.past;
    if(!from.length)return;
-   const old=structuredClone(template());commit(from.at(-1),{remember:false});from.pop();to.push(old);updateHistory();
+   const old=structuredClone(template());commit(from.at(-1),{remember:false});from.pop();to.push(old);
  }
- function addNode(kind,canvas,attach=true) {
-   const t=structuredClone(template()),n=createNode(kind,t.nodes,canvas??graph.suggest(selected));
+ function addNode(kind,canvas,parent=null) {
+   const t=structuredClone(template()),n=createNode(kind,t.nodes,canvas??graph.suggest(parent));
    t.nodes.push(n);
-   if(attach&&selected&&kind!=="spawn")t.links.push({from:selected,to:n.id});
+   if(parent&&kind!=="spawn")t.links.push({from:parent,to:n.id});
    commit(t);select(n.id);graph.reveal(n.id);
  }
+ function arrange(){const t=structuredClone(template());for(const n of t.nodes)delete n.canvas;commit(t,{generate:false});graph.fit();}
  function fillList(id=templates[0].id){$("templateSelect").replaceChildren(...templates.map(t=>new Option(t.name,t.id)));$("templateSelect").value=id;}
  function syncTemplate(reset=true) {
    const t=template();$("templateDescription").textContent=t.description??"";$("templateId").textContent=t.id;
    $("players").min=t.players.min;$("players").max=t.players.max;
    $("players").value=reset?t.players.default:Math.max(t.players.min,Math.min(t.players.max,Number($("players").value)));
-   selected=null;regenerate();updateHistory();
+   selected=null;regenerate();
  }
  function layers(){const o={};for(const el of document.querySelectorAll("[data-applied-layer]"))o[el.dataset.appliedLayer]=el.checked;scene.toggleApplied(o);}
  function select(id){
@@ -109,10 +114,7 @@ export function createTemplateMode(scene,toast) {
  $("templateSelect").onchange=()=>syncTemplate();
  for(const id of ["players","templateSeed","metalScale"])$(id).addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(regenerate,120);});
  $("rerollTemplate").onclick=()=>{$("templateSeed").value=crypto.getRandomValues(new Uint32Array(1))[0];regenerate();};
- $("fitGraph").onclick=graph.fit;$("clearSelection").onclick=()=>select(null);
- $("addNode").onclick=()=>safely(()=>addNode($("newNodeType").value));
- $("arrangeGraph").onclick=()=>safely(()=>{const t=structuredClone(template());for(const n of t.nodes)delete n.canvas;commit(t,{generate:false});graph.fit();});
- $("undoGraph").onclick=()=>safely(()=>travel("undo"));$("redoGraph").onclick=()=>safely(()=>travel("redo"));
+ $("clearSelection").onclick=()=>select(null);
  document.addEventListener("keydown",e=>{
    if(!active||e.target.closest("input,select,textarea,[contenteditable=true]"))return;
    if((e.ctrlKey||e.metaKey)&&["z","y"].includes(e.key.toLowerCase())){e.preventDefault();safely(()=>travel(e.key.toLowerCase()==="y"||e.shiftKey?"redo":"undo"));}
