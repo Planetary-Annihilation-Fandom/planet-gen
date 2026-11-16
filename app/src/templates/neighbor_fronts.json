@@ -1,20 +1,108 @@
 {
-  "version": 1,
+  "version": 2,
   "id": "neighbor_fronts",
   "name": "Соседние фронты",
-  "description": "У каждой стороны есть домашний металл и два соседних фронта. Цепочки блокеров оставляют проходы к спорным месторождениям.",
-  "players": { "min": 3, "max": 12, "default": 4 },
+  "description": "Металл и проходы следуют связям от стартов. Спорные области возникают между соседними входами.",
+  "players": {
+    "min": 3,
+    "max": 12,
+    "default": 4
+  },
   "nodes": [
-    { "id": "starts", "name": "Стартовые области", "kind": "spawn", "anchor": "players", "radius": 0.11 },
-    { "id": "home", "name": "Домашний металл", "kind": "metal", "anchor": "players", "offset": [0, 0.22], "radius": 0.085, "spots": 7 },
-    { "id": "front", "name": "Спорный металл", "kind": "metal", "anchor": "fronts", "radius": 0.10, "spots": 10 },
-    { "id": "walls", "name": "Границы фронтов", "kind": "blocker", "anchor": "fronts", "radius": 0.055, "chain": { "count": 4, "step": 0.085, "gap": 0.13 }, "offset": [0, -0.24] },
-    { "id": "passes", "name": "Проходы", "kind": "ramp", "anchor": "fronts", "radius": 0.065, "offset": [0, -0.24] }
+    {
+      "id": "starts",
+      "kind": "spawn",
+      "name": "Стартовые области",
+      "radius": 0.1,
+      "layout": "ring",
+      "count": 0,
+      "latitude": 0,
+      "phase": 0,
+      "jitter": 0
+    },
+    {
+      "id": "home",
+      "kind": "metal",
+      "name": "Домашний металл",
+      "radius": 0.085,
+      "placement": {
+        "mode": "each",
+        "distance": 0.22,
+        "bearing": 0,
+        "jitter": 0,
+        "pairing": "owner",
+        "side": "both"
+      },
+      "spots": 7
+    },
+    {
+      "id": "front",
+      "kind": "metal",
+      "name": "Спорный металл",
+      "radius": 0.1,
+      "placement": {
+        "mode": "between",
+        "distance": 0,
+        "bearing": 0,
+        "jitter": 0,
+        "pairing": "owner",
+        "side": "both"
+      },
+      "spots": 10
+    },
+    {
+      "id": "passes",
+      "kind": "ramp",
+      "name": "Проходы",
+      "radius": 0.065,
+      "placement": {
+        "mode": "each",
+        "distance": 0.24,
+        "bearing": 3.141592653589793,
+        "jitter": 0,
+        "pairing": "owner",
+        "side": "both"
+      },
+      "height": 0.4
+    },
+    {
+      "id": "walls",
+      "kind": "blocker",
+      "name": "Границы фронтов",
+      "radius": 0.055,
+      "placement": {
+        "mode": "each",
+        "distance": 0,
+        "bearing": 0,
+        "jitter": 0,
+        "pairing": "owner",
+        "side": "both"
+      },
+      "height": 0.7,
+      "pattern": "gate",
+      "chain": {
+        "count": 4,
+        "step": 0.085,
+        "gap": 0.13
+      }
+    }
   ],
   "links": [
-    { "from": "starts", "to": "home", "match": "owner" },
-    { "from": "starts", "to": "front", "match": "adjacent" },
-    { "from": "front", "to": "passes", "match": "owner" },
-    { "from": "passes", "to": "walls", "match": "owner" }
+    {
+      "from": "starts",
+      "to": "home"
+    },
+    {
+      "from": "starts",
+      "to": "front"
+    },
+    {
+      "from": "front",
+      "to": "passes"
+    },
+    {
+      "from": "passes",
+      "to": "walls"
+    }
   ]
 }

@@ -13,11 +13,11 @@ export function createTemplateLayer(project, data, radius) {
     g.userData = { nodeId: z.nodeId, zoneId: z.id, kind: z.kind };
     const color = KINDS[z.kind];
     g.add(area(project, z.direction, z.radius, color));
-    if (z.kind === "blocker" || z.kind === "ramp") g.add(area(project, z.direction, z.radius, color, { height: radius*z.radius*0.7, opacity: 0.48, lift: 3 }));
+    if (z.kind === "blocker" || z.kind === "ramp") g.add(area(project, z.direction, z.radius, color, { height: radius*z.radius*z.height, opacity: 0.48, lift: 3 }));
     for (const d of z.points) g.add(point(project, d, radius * 0.006, "#ffce3a"));
     if (!iconMaps.has(z.kind)) iconMaps.set(z.kind, iconTexture(z.kind));
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconMaps.get(z.kind), depthWrite: false }));
-    icon.position.copy(project(new THREE.Vector3(...z.direction), radius * (z.kind === "blocker" || z.kind === "ramp" ? z.radius*0.75 + 0.025 : 0.025)));
+    icon.position.copy(project(new THREE.Vector3(...z.direction), radius * (z.kind === "blocker" || z.kind === "ramp" ? z.radius*z.height + 0.025 : 0.025)));
     icon.scale.setScalar(radius*0.075);
     icon.userData.isIcon = true;
     g.add(icon);
@@ -55,10 +55,11 @@ export function createTemplateLayer(project, data, radius) {
     for (const t of debug.children) t.visible = o[t.userData.kind] !== false;
   }
   const position = (d) => project(new THREE.Vector3(...d), 0).toArray();
-  const placements = { spawns: [], metal: [], csg: [] };
+  const placements = { spawns: [], regions: [], metal: [], csg: [] };
   for (const z of data.zones) {
     const common = { id: z.id, nodeId: z.nodeId, owner: z.owner, position: position(z.direction), direction: z.direction, angularRadius: z.radius, radius: z.radius*radius };
     if (z.kind === "spawn") placements.spawns.push(common);
+    if (z.kind === "region") placements.regions.push(common);
     if (z.kind === "metal") placements.metal.push({ ...common, spots: z.points.map(position) });
     if (z.kind === "blocker" || z.kind === "ramp") placements.csg.push({ ...common, kind: z.kind, representation: "dome" });
   }
