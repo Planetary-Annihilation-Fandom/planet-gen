@@ -4,7 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
-use std::path::Path;
+use crate::vfs::Media;
 
 use crate::config::{read_json, PlanetBp};
 use crate::math::{length, sub};
@@ -47,7 +47,7 @@ pub struct BiomeDef {
 }
 
 /// Список подбиомов архетипа `/pa/terrain/<biome>.json`.
-pub fn load(media: &Path, archetype: &str) -> Vec<BiomeDef> {
+pub fn load(media: &Media, archetype: &str) -> Vec<BiomeDef> {
     let Some(arch) = read_json(media, &format!("/pa/terrain/{archetype}.json")) else {
         return Vec::new();
     };

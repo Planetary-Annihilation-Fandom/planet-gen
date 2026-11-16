@@ -75,6 +75,39 @@ impl Raycaster {
         Raycaster { verts, tris, bins, cells }
     }
 
+    /// Произвольная сетка вокруг центра планеты: треугольник попадает в корзины граней куба,
+    /// на которые проецируются его вершины.
+    pub fn from_mesh(verts: Vec<V3>, tris: Vec<[u32; 3]>, bins: usize) -> Raycaster {
+        let bins = bins.max(4);
+        let mut cells = vec![Vec::new(); 6 * bins * bins];
+        for (ti, t) in tris.iter().enumerate() {
+            let mut faces: Vec<usize> = t.iter().flat_map(|&vi| faces_of(verts[vi as usize])).flatten().collect();
+            faces.sort_unstable();
+            faces.dedup();
+            for face in faces {
+                let mut lo = (f32::MAX, f32::MAX);
+                let mut hi = (f32::MIN, f32::MIN);
+                for &vi in t {
+                    if let Some((u, v)) = uv(face, verts[vi as usize]) {
+                        lo = (lo.0.min(u), lo.1.min(v));
+                        hi = (hi.0.max(u), hi.1.max(v));
+                    }
+                }
+                if lo.0 > hi.0 {
+                    continue;
+                }
+                let (u0, v0) = (Self::bin(bins, lo.0), Self::bin(bins, lo.1));
+                let (u1, v1) = (Self::bin(bins, hi.0), Self::bin(bins, hi.1));
+                for bv in v0..=v1 {
+                    for bu in u0..=u1 {
+                        cells[(face * bins + bv) * bins + bu].push(ti as u32);
+                    }
+                }
+            }
+        }
+        Raycaster { verts, tris, bins, cells }
+    }
+
     fn bin(bins: usize, c: f32) -> usize {
         (((c + 1.0) * 0.5 * bins as f32).floor().max(0.0) as usize).min(bins - 1)
     }

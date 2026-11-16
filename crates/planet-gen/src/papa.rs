@@ -198,7 +198,7 @@ impl Papa {
     }
 
     /// Первое изображение файла; для ссылки читает целевой файл от `media`.
-    pub fn first_image(&self, media: &Path) -> Option<Image> {
+    pub fn first_image(&self, media: &crate::vfs::Media) -> Option<Image> {
         match self.textures.first()? {
             Texture::Inline(img) => Some(img.clone()),
             Texture::External(p) => read_image(media, p).ok(),
@@ -217,8 +217,8 @@ impl Papa {
 }
 
 /// Читает изображение по пути игры (`/pa/...papa`).
-pub fn read_image(media: &Path, spec: &str) -> Result<Image, String> {
-    let papa = Papa::read(&media.join(spec.trim_start_matches('/')))?;
+pub fn read_image(media: &crate::vfs::Media, spec: &str) -> Result<Image, String> {
+    let papa = Papa::parse(&media.read(spec)?)?;
     match papa.textures.into_iter().next() {
         Some(Texture::Inline(img)) => Ok(img),
         Some(Texture::External(p)) if p != spec => read_image(media, &p),

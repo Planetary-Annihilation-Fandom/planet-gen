@@ -48,7 +48,7 @@ fn main() {
         eprintln!("в файле {} планет, номер {index} вне диапазона", planets.len());
         std::process::exit(1)
     };
-    let planet = generate_from_json(p, &media, opts);
+    let planet = generate_from_json(p, &planet_gen::Media::game(&media), opts);
 
     let body = match format.as_str() {
         "summary" => summary(&planet),
@@ -89,11 +89,11 @@ fn summary(p: &Planet) -> String {
     s.push_str(&format!("подбиомы: {}
 ", list.join(", ")));
     s.push_str(&format!(
-        "кисти CSG {}, пропущено {}, сдвинуто вершин {}
+        "кисти CSG {}, пропущено {}, треугольников кистей {}
 ",
         p.csg.brushes.len(),
         p.csg.skipped.len(),
-        p.csg_changed
+        p.csg.brushes.iter().map(|b| b.indices.len() / 3).sum::<usize>()
     ));
     for (spec, why) in &p.csg.skipped {
         s.push_str(&format!("  пропущена {spec}: {why}

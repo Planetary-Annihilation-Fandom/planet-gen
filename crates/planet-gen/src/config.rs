@@ -3,7 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+use crate::vfs::Media;
 
 use crate::rng::make_seed;
 
@@ -157,14 +159,12 @@ pub fn default_media() -> PathBuf {
     PathBuf::from(r"C:\workroot\software\steam\steamapps\common\Planetary Annihilation Titans\media")
 }
 
-pub fn read_json(media: &Path, spec: &str) -> Option<Value> {
-    let rel = spec.trim_start_matches('/');
-    let text = std::fs::read_to_string(media.join(rel)).ok()?;
-    serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()
+pub fn read_json(media: &Media, spec: &str) -> Option<Value> {
+    media.json(spec)
 }
 
 /// Ищет поле спецификации с учётом цепочки `base_spec`.
-fn spec_field(media: &Path, spec: &str, key: &str) -> Option<Value> {
+fn spec_field(media: &Media, spec: &str, key: &str) -> Option<Value> {
     let mut cur = spec.to_string();
     for _ in 0..8 {
         let v = read_json(media, &cur)?;
@@ -176,7 +176,7 @@ fn spec_field(media: &Path, spec: &str, key: &str) -> Option<Value> {
     None
 }
 
-pub fn load_archetype(media: &Path, biome: &str) -> Archetype {
+pub fn load_archetype(media: &Media, biome: &str) -> Archetype {
     let mut a = Archetype { name: biome.to_string(), ..Archetype::default() };
     let Some(v) = read_json(media, &format!("/pa/terrain/{biome}.json")) else {
         return a;

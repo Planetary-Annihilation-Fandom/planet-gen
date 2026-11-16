@@ -226,7 +226,7 @@ function showResult(p, name, sysName, ms) {
   const add = p.csg.brushes.filter((b) => b.op === "Add").length;
   const sub = p.csg.brushes.length - add;
   $("csg").innerHTML = p.csg.brushes.length
-    ? `Сложение ${add}, вычитание ${sub}. Поверхность изменена в ${p.csg_changed} вершинах.` +
+    ? `Сложение ${add}, вычитание ${sub}. Булевы операции применены к поверхности и кистям.` +
       (p.csg.skipped.length ? `<br>Пропущено ${p.csg.skipped.length}: ${p.csg.skipped.map((s) => s[0]).join(", ")}` : "")
     : "В планете нет кистей.";
   $("note").textContent = m.limit_is_random

@@ -1,7 +1,7 @@
 // Окно просмотра: команды вызывают крейт planet-gen и отдают фронту готовые данные.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use planet_gen::{config, generate_from_json, MetalOptions, Planet};
+use planet_gen::{config, generate_from_json, Media, MetalOptions, Planet};
 use serde_json::Value;
 
 fn read_json(path: &std::path::Path) -> Result<Value, String> {
@@ -9,11 +9,15 @@ fn read_json(path: &std::path::Path) -> Result<Value, String> {
     serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Ресурсы игры: корень `media` из аргумента или установленная игра.
+fn media_of(root: Option<String>) -> Media {
+    Media::game(root.map(Into::into).unwrap_or_else(config::default_media))
+}
+
 /// Системы, поставляемые с игрой (`ui/main/shared/default_systems.json`).
 #[tauri::command(async)]
 fn default_systems(media: Option<String>) -> Result<Value, String> {
-    let media = media.map(Into::into).unwrap_or_else(config::default_media);
-    read_json(&media.join("ui/main/shared/default_systems.json"))
+    media_of(media).json("/ui/main/shared/default_systems.json").ok_or_else(|| "default_systems.json не найден".to_string())
 }
 
 #[tauri::command(async)]
@@ -23,7 +27,7 @@ fn read_system(path: String) -> Result<Value, String> {
 
 #[tauri::command(async)]
 fn generate(planet: Value, max_slope: Option<f32>, media: Option<String>) -> Planet {
-    let media = media.map(Into::into).unwrap_or_else(config::default_media);
+    let media = media_of(media);
     let mut opts = MetalOptions::default();
     if let Some(s) = max_slope {
         opts.max_slope_deg = s;
@@ -35,8 +39,7 @@ fn generate(planet: Value, max_slope: Option<f32>, media: Option<String>) -> Pla
 /// Сторона уменьшается до 512 — просмотрщику больше не нужно.
 #[tauri::command(async)]
 fn texture(path: String, media: Option<String>) -> Result<tauri::ipc::Response, String> {
-    let media: std::path::PathBuf = media.map(Into::into).unwrap_or_else(config::default_media);
-    let img = planet_gen::papa::read_image(&media, &path)?.downscale_to(512);
+    let img = planet_gen::papa::read_image(&media_of(media), &path)?.downscale_to(512);
     let mut out = Vec::with_capacity(8 + img.rgba.len());
     out.extend_from_slice(&img.width.to_le_bytes());
     out.extend_from_slice(&img.height.to_le_bytes());
