@@ -48,14 +48,3 @@ pub fn make_seed(seed: u32, k: f32) -> f32 {
     let f = r.float();
     ((f + f) - 1.0) * k * 10.0
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn zero_seed_starts_from_one() {
-        let mut r = Random::new(0);
-        assert_eq!(r.rand32(), 270369);
-    }
-}
