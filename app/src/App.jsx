@@ -24,7 +24,7 @@ export default function App() {
   const [slope, setSlope] = useState(40), [settingsOpen, setSettingsOpen] = useState(true);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [result, setResult] = useState(null), [base, setBase] = useState(null);
   const [notification, setNotification] = useState(null), [layersOpen, setLayersOpen] = useState(false), [layers, setLayers] = useState(INITIAL_LAYERS);
-  const [appliedLayers, setAppliedLayers] = useState({ spawn: true, metal: true, blocker: true, ramp: true, region: true, links: true, debug: false, icons: true });
+  const [appliedLayers, setAppliedLayers] = useState({ spawn: true, metal: true, blocker: true, ramp: true, front: true, links: true, debug: false, icons: true });
   const tauri = !!window.__TAURI_INTERNALS__;
   const template = mode === 'templates';
   function notify(message, error = false) { setNotification({ message: String(message), error, key: Date.now() }); }
@@ -66,7 +66,7 @@ export default function App() {
       let nextBase = null;
       if (nextMode === 'templates') { nextBase = cleanBasePlanet(planet, numeric); planet = nextBase.result; }
       await sceneRef.current.show(planet, { template: nextMode === 'templates' });
-      if (nextBase) { baseSource.current = { ...BASE_SOURCE, planet: numeric }; setBase(nextBase); }
+      if (nextBase) { baseSource.current = { ...BASE_SOURCE, planet: numeric }; setBase(nextBase); store.parameters({ planetRadius: Number(numeric.radius) }); }
       setResult({ planet, name: source.name ?? 'Планета', ms, system: nextMode === 'templates' ? 'Основа шаблона' : nextMode === 'random' ? 'Случайная планета' : systemName });
     } catch (error) { notify(String(error), true); }
     finally { busyRef.current = false; setBusy(false); setStatus(''); }

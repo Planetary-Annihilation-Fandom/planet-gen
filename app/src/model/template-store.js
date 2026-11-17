@@ -1,10 +1,11 @@
-import neighbors from '../templates/neighbor_fronts.json';
-import shared from '../templates/shared_regions.json';
+import duel from '../templates/duel.json';
+import branches from '../templates/branches.json';
 import { validateTemplate, applyTemplate } from '../template-engine.js';
 import { connectNodes, disconnectNodes, layoutGraph } from '../graph-model.js';
 import { createNode, setField } from '../node-types.js';
 
-const STORAGE = 'planet-gen.templates.v1';
+const STORAGE = 'planet-gen.templates.v3';
+const LEGACY_STORAGE = 'planet-gen.templates.v1';
 
 // Модель хранит шаблоны и историю; исходная раскладка назначается один раз при загрузке.
 function withPositions(raw) {
@@ -14,19 +15,33 @@ function withPositions(raw) {
   return template;
 }
 export function createTemplateStore(storage = globalThis.localStorage) {
-  let templates = [withPositions(neighbors), withPositions(shared)];
-  let loadError = '';
+  let templates = [withPositions(duel), withPositions(branches)];
+  let loadError = '', legacy = [];
+  const savedSource = storage?.getItem(STORAGE);
   try {
-    const saved = JSON.parse(storage?.getItem(STORAGE) ?? '[]');
+    legacy = JSON.parse(storage?.getItem('planet-gen.legacy-imports') ?? '[]');
+    if (!Array.isArray(legacy)) legacy = [];
+    const recovery = storage?.getItem('planet-gen.templates.v3.recovery');
+    if (recovery) legacy.push({ name: 'Архив восстановления 1v1', data: recovery });
+    const previous = storage?.getItem(LEGACY_STORAGE);
+    if (previous) legacy.push({ name: 'Старые FFA-шаблоны', data: previous });
+    const saved = JSON.parse(savedSource ?? '[]');
     if (!Array.isArray(saved) || saved.length > 52) throw new Error('Некорректный список шаблонов');
-    const restored = saved.map(withPositions);
-    for (const item of restored) {
-      const i = templates.findIndex(t => t.id === item.id);
-      if (i < 0) templates.push(item); else templates[i] = item;
+    for (const raw of saved) {
+      try {
+        const item = withPositions(raw), i = templates.findIndex(t => t.id === item.id);
+        if (i < 0) templates.push(item); else templates[i] = item;
+      } catch (error) {
+        legacy.push({ name: raw?.name ?? 'Непрочитанный шаблон', data: JSON.stringify(raw) });
+        loadError = `Часть шаблонов не загружена: ${error.message}. Исходные данные доступны в архиве.`;
+      }
     }
-  } catch (error) { loadError = `Сохранённые шаблоны не загружены: ${error.message}`; }
+  } catch (error) {
+    legacy.push({ name: 'Непрочитанные данные редактора', data: storage?.getItem(STORAGE) ?? '' });
+    loadError = `Сохранённые шаблоны не загружены: ${error.message}. Исходные данные будут сохранены в архив восстановления перед изменениями.`;
+  }
   let id = templates[0].id, selected = null;
-  let parameters = { players: templates[0].players.default, seed: 42, metalScale: 1 };
+  let parameters = { players: 2, seed: 42, metalScale: 1, planetRadius: 500 };
   const histories = new Map(), listeners = new Set();
   const template = () => templates.find(t => t.id === id);
   const history = () => {
@@ -44,11 +59,13 @@ export function createTemplateStore(storage = globalThis.localStorage) {
   }
   let applied = compile(), snapshot;
   function emit() {
-    snapshot = { templates, template: template(), parameters, applied, selected, loadError,
+    const uniqueLegacy = [...new Map(legacy.map(item => [item.data, item])).values()];
+    snapshot = { templates, template: template(), parameters, applied, selected, loadError, legacy: uniqueLegacy,
       canUndo: history().past.length > 0, canRedo: history().future.length > 0 };
     listeners.forEach(listener => listener());
   }
   function save(next) {
+    if (loadError && savedSource) storage?.setItem('planet-gen.templates.v3.recovery', savedSource);
     storage?.setItem(STORAGE, JSON.stringify(next));
     templates = next;
   }
@@ -70,6 +87,12 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     callback(next); commit(next, options);
   }
   const store = {
+    archiveLegacy(raw) {
+      const item = { name: raw?.name ?? 'Импорт FFA', data: JSON.stringify(raw) };
+      const imports = JSON.parse(storage?.getItem('planet-gen.legacy-imports') ?? '[]');
+      storage?.setItem('planet-gen.legacy-imports', JSON.stringify([...imports, item]));
+      legacy = [...legacy, item]; emit();
+    },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getSnapshot: () => snapshot,
     select(nodeId) { selected = nodeId; emit(); },
@@ -84,7 +107,6 @@ export function createTemplateStore(storage = globalThis.localStorage) {
       edit(t => {
         const node = t.nodes.find(n => n.id === nodeId);
         setField(node, path, value);
-        if (path === 'pattern' && value === 'gate') node.chain.step = Math.min(node.chain.step, node.radius * 1.8);
       });
     },
     connect(from, to) { commit(connectNodes(template(), from, to)); },
@@ -102,6 +124,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
       edit(t => t.nodes.push(node)); store.select(node.id); return node.id;
     },
     deleteNode(nodeId) {
+      if (template().nodes.find(n => n.id === nodeId)?.kind === 'spawn') throw new Error('Единственный спавн нельзя удалить');
       edit(t => { t.nodes = t.nodes.filter(n => n.id !== nodeId); t.links = t.links.filter(l => l.from !== nodeId && l.to !== nodeId); });
     },
     travel(direction) {
@@ -118,7 +141,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     },
     newTemplate({ id, name, copy }) {
       const next = copy ? structuredClone(template()) : {
-        version: 2, players: { min: 3, max: 12, default: 4 }, nodes: [{ ...createNode('spawn'), id: 'starts' }], links: [],
+        version: 3, players: { min: 2, max: 2, default: 2 }, nodes: [{ ...createNode('spawn'), id: 'starts' }], links: [],
       };
       next.id = id.trim(); next.name = name.trim(); store.add(next);
     },

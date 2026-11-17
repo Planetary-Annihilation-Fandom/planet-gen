@@ -28,7 +28,7 @@ function TemplateNode({ data, selected }) {
   return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}${open ? ' expanded' : ''}`} aria-label={node.name}>
     {node.kind !== 'spawn' && <Handle type="target" position={Position.Left} id="input" aria-label="Вход" />}
     <header className="template-node-heading"><strong>{node.name}</strong><span>{NODE_TYPES[node.kind].title}</span></header>
-    <Handle type="source" position={Position.Right} id="output" aria-label="Выход" />
+    {node.kind !== 'front' && <Handle type="source" position={Position.Right} id="output" aria-label="Выход" />}
     <div className="node-fields node-primary-fields nodrag nowheel nopan" aria-label="Основные параметры">
       {primary.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}
     </div>
@@ -90,6 +90,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, nodeId: node?.id, canvas: flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }
+  const menuNode = snapshot.template.nodes.find(n => n.id === menu?.nodeId);
   const command = action => () => { setMenu(null); action(); };
   return <aside id="templateCard" className="graph-panel" ref={panel} hidden={hidden} aria-label="Граф шаблона">
     <div ref={handle} id="graphSplitter" role="separator" tabIndex={0} aria-label="Ширина панели графа" aria-orientation="vertical" />
@@ -98,7 +99,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
       <Button kind="ghost" size="sm" disabled={!snapshot.canUndo} onClick={actions.undo}>Отменить</Button>
       <Button kind="ghost" size="sm" disabled={!snapshot.canRedo} onClick={actions.redo}>Повторить</Button>
     </div></div>
-    <div className="graph-summary"><Tag type="gray" size="sm">{snapshot.parameters.players} игроков</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
+    <div className="graph-summary"><Tag type="gray" size="sm">1v1</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
     <div className="graph-canvas" id="nodeCanvas">
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} defaultEdgeOptions={{ zIndex: 0 }} elevateEdgesOnSelect={false} onInit={instance => { flow.current = instance; }}
         onNodesChange={changes => {
@@ -125,13 +126,14 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
       <Button kind="ghost" size="sm" onClick={() => flow.current?.zoomIn()}>+</Button>
       <Button kind="ghost" size="sm" onClick={() => flow.current?.fitView({ padding: 0.15 })}>Вписать граф</Button>
     </div>
+    {!!snapshot.applied.debug.warnings.length && <div className="graph-notice"><InlineNotification kind="warning" title="Незавершённый граф" subtitle={snapshot.applied.debug.warnings.join("; ")} hideCloseButton lowContrast /></div>}
     {snapshot.applied.debug.error && <div className="graph-notice"><InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast /></div>}
     <Menu open={!!menu && !hidden && !collapsed} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
-      <MenuItem label={menu?.nodeId ? 'Создать дочернюю ноду' : 'Создать ноду'}>
-        {Object.entries(NODE_TYPES).map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
+      <MenuItem disabled={menuNode?.kind === 'front'} label={menu?.nodeId ? 'Создать дочернюю ноду' : 'Создать ноду'}>
+        {Object.entries(NODE_TYPES).filter(([kind]) => kind !== 'spawn' && menuNode?.kind !== 'front').map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
       </MenuItem>
-      {menu?.nodeId && <MenuItem label="Копировать ноду" onClick={command(() => actions.duplicate(menu.nodeId))} />}
-      {menu?.nodeId && <MenuItem label="Удалить ноду" kind="danger" onClick={command(() => actions.deleteNode(menu.nodeId))} />}
+      {menu?.nodeId && menuNode?.kind !== 'spawn' && <MenuItem label="Копировать ноду" onClick={command(() => actions.duplicate(menu.nodeId))} />}
+      {menu?.nodeId && menuNode?.kind !== 'spawn' && <MenuItem label="Удалить ноду" kind="danger" onClick={command(() => actions.deleteNode(menu.nodeId))} />}
       <MenuItemDivider />
       <MenuItem label="Отменить" shortcut="Ctrl+Z" disabled={!snapshot.canUndo} onClick={command(actions.undo)} />
       <MenuItem label="Повторить" shortcut="Ctrl+Shift+Z" disabled={!snapshot.canRedo} onClick={command(actions.redo)} />

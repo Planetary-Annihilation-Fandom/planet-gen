@@ -1,0 +1,53 @@
+{
+  "version": 3,
+  "id": "duel",
+  "name": "1v1: спавн, металл, фронт",
+  "description": "Один граф стороны игрока, зеркальное размещение для соперника.",
+  "players": {
+    "min": 2,
+    "max": 2,
+    "default": 2
+  },
+  "nodes": [
+    {
+      "id": "spawn",
+      "kind": "spawn",
+      "name": "Спавн игрока",
+      "canvas": {
+        "x": 0,
+        "y": 0
+      },
+      "size": 12
+    },
+    {
+      "id": "metal",
+      "kind": "metal",
+      "name": "Ближний металл",
+      "canvas": {
+        "x": 370,
+        "y": 0
+      },
+      "size": 10,
+      "density": 7
+    },
+    {
+      "id": "front",
+      "kind": "front",
+      "name": "Фронт",
+      "canvas": {
+        "x": 740,
+        "y": 0
+      }
+    }
+  ],
+  "links": [
+    {
+      "to": "metal",
+      "from": "spawn"
+    },
+    {
+      "to": "front",
+      "from": "metal"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ export function analyzeGraph(template) {
   for (const l of template.links) {
     if (!nodes.has(l.from) || !nodes.has(l.to)) throw new Error("Связь ссылается на неизвестную ноду");
     if (nodes.get(l.to).kind === "spawn") throw new Error("У стартовой ноды нет входа");
+    if (nodes.get(l.from).kind === "front") throw new Error("Фронт завершает путь и не имеет выхода");
     const key = l.from+":"+l.to;
     if (seen.has(key)) throw new Error("Эта связь уже существует");
     seen.add(key); parents.get(l.to).push(l.from); children.get(l.from).push(l.to);
