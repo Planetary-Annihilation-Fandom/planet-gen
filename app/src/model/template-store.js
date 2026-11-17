@@ -5,7 +5,6 @@ import { connectNodes, disconnectNodes, layoutGraph } from '../graph-model.js';
 import { createNode, setField } from '../node-types.js';
 
 const STORAGE = 'planet-gen.templates.v3';
-const LEGACY_STORAGE = 'planet-gen.templates.v1';
 
 // Модель хранит шаблоны и историю; исходная раскладка назначается один раз при загрузке.
 function withPositions(raw) {
@@ -16,28 +15,24 @@ function withPositions(raw) {
 }
 export function createTemplateStore(storage = globalThis.localStorage) {
   let templates = [withPositions(duel), withPositions(branches)];
-  let loadError = '', legacy = [];
-  const savedSource = storage?.getItem(STORAGE);
+  let loadError = '';
+  storage?.removeItem('planet-gen.templates.v1');
+  storage?.removeItem('planet-gen.legacy-imports');
+  let savedSource = storage?.getItem(STORAGE);
   try {
-    legacy = JSON.parse(storage?.getItem('planet-gen.legacy-imports') ?? '[]');
-    if (!Array.isArray(legacy)) legacy = [];
-    const recovery = storage?.getItem('planet-gen.templates.v3.recovery');
-    if (recovery) legacy.push({ name: 'Архив восстановления 1v1', data: recovery });
-    const previous = storage?.getItem(LEGACY_STORAGE);
-    if (previous) legacy.push({ name: 'Старые FFA-шаблоны', data: previous });
     const saved = JSON.parse(savedSource ?? '[]');
     if (!Array.isArray(saved) || saved.length > 52) throw new Error('Некорректный список шаблонов');
-    for (const raw of saved) {
+    const current = saved.filter(raw => ![1, 2].includes(raw?.version));
+    if (current.length !== saved.length) { savedSource = JSON.stringify(current); storage?.setItem(STORAGE, savedSource); }
+    for (const raw of current) {
       try {
         const item = withPositions(raw), i = templates.findIndex(t => t.id === item.id);
         if (i < 0) templates.push(item); else templates[i] = item;
       } catch (error) {
-        legacy.push({ name: raw?.name ?? 'Непрочитанный шаблон', data: JSON.stringify(raw) });
-        loadError = `Часть шаблонов не загружена: ${error.message}. Исходные данные доступны в архиве.`;
+        loadError = `Часть шаблонов не загружена: ${error.message}.`;
       }
     }
   } catch (error) {
-    legacy.push({ name: 'Непрочитанные данные редактора', data: storage?.getItem(STORAGE) ?? '' });
     loadError = `Сохранённые шаблоны не загружены: ${error.message}. Исходные данные будут сохранены в архив восстановления перед изменениями.`;
   }
   let id = templates[0].id, selected = null;
@@ -59,8 +54,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
   }
   let applied = compile(), snapshot;
   function emit() {
-    const uniqueLegacy = [...new Map(legacy.map(item => [item.data, item])).values()];
-    snapshot = { templates, template: template(), parameters, applied, selected, loadError, legacy: uniqueLegacy,
+    snapshot = { templates, template: template(), parameters, applied, selected, loadError,
       canUndo: history().past.length > 0, canRedo: history().future.length > 0 };
     listeners.forEach(listener => listener());
   }
@@ -87,12 +81,6 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     callback(next); commit(next, options);
   }
   const store = {
-    archiveLegacy(raw) {
-      const item = { name: raw?.name ?? 'Импорт FFA', data: JSON.stringify(raw) };
-      const imports = JSON.parse(storage?.getItem('planet-gen.legacy-imports') ?? '[]');
-      storage?.setItem('planet-gen.legacy-imports', JSON.stringify([...imports, item]));
-      legacy = [...legacy, item]; emit();
-    },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getSnapshot: () => snapshot,
     select(nodeId) { selected = nodeId; emit(); },

@@ -19,7 +19,6 @@ export function createNode(kind, existing = [], canvas) {
   return { id: `${kind}_${i}`, kind, name: NODE_TYPES[kind].title, ...structuredClone(NODE_TYPES[kind].defaults), ...(canvas ? { canvas } : {}) };
 }
 export function upgradeTemplate(raw) {
-  if (raw?.version === 1 || raw?.version === 2) throw new Error('Это старый FFA-шаблон. Сохраните его JSON в архив; для 1v1 создайте новый шаблон. Автоматическое преобразование изменило бы смысл графа.');
   if (raw?.version !== 3) throw new Error('Нужен шаблон 1v1 версии 3');
   return structuredClone(raw);
 }

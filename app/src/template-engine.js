@@ -33,8 +33,9 @@ function placeSide(graph) {
   const order = graph.order.filter(n => graph.active.has(n.id) && n.kind !== 'front');
   const radii = new Map(order.map(n => [n.id, angularRadius(n)]));
   const weights = new Map(), remaining = new Map();
-  for (const n of graph.order) weights.set(n.id, Math.max(0, ...graph.parents.get(n.id).map(id => weights.get(id))) + angularRadius(n) * 2);
-  for (const n of [...graph.order].reverse()) remaining.set(n.id, angularRadius(n) * 2 + Math.max(0, ...graph.children.get(n.id).map(id => remaining.get(id))));
+  const activeOrder = graph.order.filter(n => graph.active.has(n.id));
+  for (const n of activeOrder) weights.set(n.id, Math.max(0, ...graph.parents.get(n.id).filter(id => graph.active.has(id)).map(id => weights.get(id))) + angularRadius(n) * 2);
+  for (const n of [...activeOrder].reverse()) remaining.set(n.id, angularRadius(n) * 2 + Math.max(0, ...graph.children.get(n.id).filter(id => graph.active.has(id)).map(id => remaining.get(id))));
   const placed = new Map();
   const spawn = order[0];
   placed.set(spawn.id, { t: 0, direction: [1, 0, 0], bearing: 0, radius: radii.get(spawn.id) });
@@ -84,7 +85,7 @@ export function applyTemplate(raw, { players = 2, seed, metalScale = 1, planetRa
   const mirror = (d, side) => rotate([d[0] * (side === 0 ? 1 : -1), d[1], d[2]]);
   let metalCount = 0;
   for (const n of graph.order) {
-    if (!graph.active.has(n.id)) { warnings.push(`${n.name}: нет пути от спавна, область не создана`); continue; }
+    if (!graph.active.has(n.id)) continue;
     if (n.kind !== 'front' && !graph.children.get(n.id).length) warnings.push(`${n.name}: путь ещё не завершён фронтом`);
     for (const side of n.kind === 'front' ? [null] : [0, 1]) {
       const p = n.kind === 'front' ? { t: HALF, bearing: 0, radius: .012, direction: [0, 1, 0] } : placed.get(n.id);

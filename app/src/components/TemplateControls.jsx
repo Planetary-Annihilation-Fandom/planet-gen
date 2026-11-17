@@ -16,8 +16,7 @@ export function TemplateControls({ store, snapshot, notify, base, layers, setLay
     try {
       if (file.size > 256000) throw new Error('JSON должен быть меньше 256 КБ');
       const raw = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
-      if ([1, 2].includes(raw.version)) { store.archiveLegacy(raw); notify('FFA-шаблон сохранён в архив. Создайте новый шаблон 1v1.'); }
-      else store.add(raw);
+      store.add(raw);
     } catch (error) { notify(error.message, true); }
     event.target.value = '';
   }
@@ -36,11 +35,6 @@ export function TemplateControls({ store, snapshot, notify, base, layers, setLay
     <FileUploaderButton id="importTemplate" labelText="Загрузить шаблон JSON" buttonKind="ghost" size="sm" accept={['.json']} disableLabelChanges onChange={importFile} disabled={disabled} />
     <div className="section-heading">Шаблон 1v1</div>
     <p className="helper-text">Размер: диаметр в процентах пути от спавна до фронта. При текущем радиусе 10% ≈ {Math.round(parameters.planetRadius * Math.PI / 20)} единиц поверхности. Насыщенность металла: число точек для области размера 10%; число растёт с площадью.</p>
-    {!!snapshot.legacy.length && <InlineNotification kind="warning" title="Архив шаблонов" subtitle="Прежние и непрочитанные данные сохранены отдельно. FFA не преобразуется в 1v1; исходный JSON можно скачать." hideCloseButton lowContrast />}
-    {snapshot.legacy.map((item, index) => <Button key={index} kind="ghost" size="sm" onClick={() => {
-      const blob = new Blob([item.data], { type: 'application/json' }), url = URL.createObjectURL(blob), link = document.createElement('a');
-      link.href = url; link.download = `legacy-${index + 1}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }}>Скачать: {item.name}</Button>)}
     <NumericField id="templateSeed" label="Зерно шаблона" min={0} max={4294967295} value={parameters.seed} disabled={disabled} onChange={seed => store.parameters({ seed })} />
     <Choice id="metalScale" label="Количество металла" value={parameters.metalScale} options={[[0.5, 'Половина'], [1, 'Обычное'], [1.5, 'В 1.5 раза больше'], [2, 'Вдвое больше']]}
       disabled={disabled} onChange={value => store.parameters({ metalScale: Number(value) })} />

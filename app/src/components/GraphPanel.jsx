@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Accordion, AccordionItem, Button, InlineNotification, Menu, MenuItem, MenuItemDivider, Tag } from '@carbon/react';
+import { Button, InlineNotification, Menu, MenuItem, MenuItemDivider, Tag, TextInput } from '@carbon/react';
 import { setupGraphPanel } from '../graph-panel.js';
 import { NODE_TYPES } from '../node-types.js';
 import { NodeField } from './NodeField.jsx';
@@ -17,26 +17,39 @@ function validView(view) {
   return view && [view.x, view.y, view.zoom].every(Number.isFinite) && view.zoom >= 0.02 && view.zoom <= 4;
 }
 
-// React Flow измеряет карточку, но её раскрытие не запускает раскладку или движение камеры.
+function NodeName({ node, store }) {
+  const [draft, setDraft] = useState(node.name), [error, setError] = useState('');
+  const cancelled = useRef(false);
+  useEffect(() => { setDraft(node.name); setError(''); }, [node.name]);
+  function save() {
+    if (cancelled.current) { cancelled.current = false; return; }
+    if (draft === node.name) return;
+    try { store.change(node.id, 'name', draft); setError(''); }
+    catch (error) { setError(error.message); }
+  }
+  return <TextInput id={`node-${node.id}-name`} className="node-name nodrag nowheel nopan" labelText="Название ноды" hideLabel size="sm"
+    value={draft} maxLength={100} invalid={!!error} invalidText={error} onChange={event => setDraft(event.target.value)} onBlur={save}
+    onKeyDown={event => {
+      if (event.nativeEvent.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+      if (event.key === 'Escape') {
+        event.stopPropagation(); cancelled.current = true; setDraft(node.name); setError(''); event.currentTarget.blur();
+      }
+    }} />;
+}
+
 function TemplateNode({ data, selected }) {
   const { node, store, inactive } = data;
-  const [open, setOpen] = useState(false);
   const type = NODE_TYPES[node.kind];
   const fields = type.fields.filter(field => !field.when || field.when(node));
   const primary = fields.filter(field => type.primaryFields.includes(field.path));
-  const extra = fields.filter(field => !type.primaryFields.includes(field.path));
-  return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}${open ? ' expanded' : ''}`} aria-label={node.name}>
+  return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}`} aria-label={node.name}>
     {node.kind !== 'spawn' && <Handle type="target" position={Position.Left} id="input" aria-label="Вход" />}
-    <header className="template-node-heading"><strong>{node.name}</strong><span>{NODE_TYPES[node.kind].title}</span></header>
+    <header className="template-node-heading"><NodeName node={node} store={store} /><span>{type.title}</span></header>
     {node.kind !== 'front' && <Handle type="source" position={Position.Right} id="output" aria-label="Выход" />}
     <div className="node-fields node-primary-fields nodrag nowheel nopan" aria-label="Основные параметры">
       {primary.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}
     </div>
-    <Accordion size="sm" className="nodrag nowheel nopan">
-      <AccordionItem title="Дополнительно" open={open} onHeadingClick={() => setOpen(value => !value)}>
-        {open && <div className="node-fields">{extra.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}</div>}
-      </AccordionItem>
-    </Accordion>
   </section>;
 }
 const nodeTypes = { template: TemplateNode };
