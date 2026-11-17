@@ -6,24 +6,15 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 .app-theme { height: 100%; background: var(--cds-background); color: var(--cds-text-primary); }
-.header-description { @include type.type-style('body-compact-01'); color: var(--cds-text-on-color); margin-right: spacing.$spacing-05; }
-.workspace { margin: 0; padding: 0; position: absolute; inset: 0; display: grid; grid-template-columns: 320px minmax(280px, 1fr) 320px; }
-.workspace.template-mode { grid-template-columns: 320px minmax(280px, 1fr) min(var(--graph-width, 34vw), calc(100vw - 600px)); }
 .settings-panel, .result-panel, .graph-panel { min-width: 0; background: var(--cds-background); border-color: var(--cds-border-subtle-00); }
-.settings-panel { display: flex; flex-direction: column; overflow-y: auto; border-right: 1px solid var(--cds-border-subtle-00); }
-.panel-intro { padding: spacing.$spacing-06 spacing.$spacing-05 spacing.$spacing-05; }
-.panel-intro h1 { @include type.type-style('heading-03'); }
+.settings-panel { position: absolute; inset: 0 auto 0 0; width: 320px; z-index: 3; display: flex; flex-direction: column; overflow-y: auto; border-right: 1px solid var(--cds-border-subtle-00); }
 .eyebrow { @include type.type-style('label-01'); color: var(--cds-text-secondary); margin: 0 0 spacing.$spacing-02; }
-.settings-panel .cds--tabs { flex-shrink: 0; }
-.settings-panel .cds--tab--list { width: 100%; }
-.settings-panel .cds--tabs__nav-link { min-width: 0; padding-inline: spacing.$spacing-04; }
-.settings-panel .cds--tab-content { padding: spacing.$spacing-05; }
 .source-form, .modal-form { display: flex; flex-direction: column; gap: spacing.$spacing-05; }
 .source-form .cds--file { margin: 0; }
 .source-form .cds--file-browse-btn { max-width: 100%; }
 .helper-text { @include type.type-style('helper-text-01'); color: var(--cds-text-secondary); margin: 0; overflow-wrap: anywhere; }
 .section-heading { @include type.type-style('heading-compact-01'); padding-top: spacing.$spacing-03; }
-.field-pair, .generator-fields, .node-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: spacing.$spacing-05 spacing.$spacing-04; }
+.generator-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: spacing.$spacing-05 spacing.$spacing-04; }
 .generator-fields > *, .node-fields > * { min-width: 0; }
 .wide-field { grid-column: 1 / -1; }
 .generator-accordion { width: auto; margin: 0 spacing.$spacing-05 spacing.$spacing-06; }
@@ -32,14 +23,10 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .generation-actions > .cds--btn { width: 100%; max-width: none; }
 .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: spacing.$spacing-02; }
 .layer-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: spacing.$spacing-03; }
-.planet-workspace { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--cds-background); }
-.viewport-toolbar { position: absolute; inset: 0 0 auto; height: 88px; z-index: 2; display: flex; justify-content: space-between; align-items: flex-start; gap: spacing.$spacing-03; padding: spacing.$spacing-05; background: var(--cds-background); border-bottom: 1px solid var(--cds-border-subtle-00); }
-.viewport-toolbar > div:first-child { min-width: 0; }
-.viewport-toolbar h2 { @include type.type-style('heading-compact-02'); margin: 0 0 spacing.$spacing-02; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.viewport-toolbar .helper-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.surface-layers { position: absolute; top: spacing.$spacing-09; right: spacing.$spacing-05; width: 240px; display: flex; flex-direction: column; gap: spacing.$spacing-04; padding: spacing.$spacing-05; background: var(--cds-layer-01); box-shadow: 0 2px 6px var(--cds-shadow); border: 1px solid var(--cds-border-subtle-01); }
+.planet-workspace { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; background: var(--cds-background); }
+.surface-layers { position: absolute; top: spacing.$spacing-08; left: 0; width: 240px; display: flex; flex-direction: column; gap: spacing.$spacing-04; padding: spacing.$spacing-05; background: var(--cds-layer-01); box-shadow: 0 2px 6px var(--cds-shadow); border: 1px solid var(--cds-border-subtle-01); }
 .surface-layers h3 { @include type.type-style('heading-compact-01'); margin: 0; }
-#view { position: absolute; inset: 88px 0 spacing.$spacing-07; }
+#view { position: absolute; inset: 0; }
 #view canvas { display: block; }
 .viewport-empty { position: absolute; inset: 40% spacing.$spacing-06 auto; text-align: center; pointer-events: none; color: var(--cds-text-secondary); }
 .viewport-empty h3 { @include type.type-style('heading-compact-02'); margin-bottom: spacing.$spacing-03; }
@@ -47,9 +34,7 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .runtime-notice { position: absolute; inset: auto spacing.$spacing-05 spacing.$spacing-09; }
 .generation-status { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); padding: spacing.$spacing-04 spacing.$spacing-05; background: var(--cds-layer-01); border: 1px solid var(--cds-border-subtle-01); }
 .generation-status .cds--inline-loading { min-width: 180px; }
-.viewport-footer { @include type.type-style('label-01'); position: absolute; inset: auto 0 0; height: spacing.$spacing-07; display: flex; align-items: center; justify-content: space-between; gap: spacing.$spacing-03; padding: 0 spacing.$spacing-05; color: var(--cds-text-secondary); border-top: 1px solid var(--cds-border-subtle-00); }
-.viewport-footer span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-panel { padding: spacing.$spacing-06 spacing.$spacing-05; overflow-y: auto; border-left: 1px solid var(--cds-border-subtle-00); }
+.result-panel { position: absolute; inset: 0 0 0 auto; width: 320px; z-index: 3; padding: spacing.$spacing-06 spacing.$spacing-05; overflow-y: auto; border-left: 1px solid var(--cds-border-subtle-00); }
 .result-panel h2 { @include type.type-style('heading-03'); margin-bottom: spacing.$spacing-06; overflow-wrap: anywhere; }
 .result-panel .cds--data-table { margin-bottom: spacing.$spacing-06; }
 .result-panel .cds--data-table td { padding-inline: spacing.$spacing-03; }
@@ -61,15 +46,15 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .biome-row canvas { width: spacing.$spacing-07; height: spacing.$spacing-07; }
 .biome-bar { height: spacing.$spacing-02; grid-column: 2 / 4; background: var(--cds-layer-accent-01); }
 .biome-bar > div { height: 100%; background: var(--cds-support-info); }
-.graph-panel { position: relative; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid var(--cds-border-subtle-00); }
+.graph-panel { position: absolute; inset: 0 0 0 auto; width: clamp(320px, var(--graph-width, 34vw), calc(100vw - 48px)); z-index: 3; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid var(--cds-border-subtle-00); }
 #graphSplitter { position: absolute; left: 0; top: 0; bottom: 0; width: spacing.$spacing-03; z-index: 3; cursor: col-resize; touch-action: none; }
 #graphSplitter:hover, #graphSplitter:focus-visible { background: var(--cds-focus); outline: none; }
 .resizing-graph, .resizing-graph * { cursor: col-resize !important; user-select: none !important; }
-.graph-heading { padding: spacing.$spacing-05 spacing.$spacing-05 spacing.$spacing-03; display: flex; justify-content: space-between; gap: spacing.$spacing-03; flex-wrap: wrap; }
+.graph-heading { padding: spacing.$spacing-03 spacing.$spacing-05; display: flex; align-items: center; justify-content: space-between; gap: spacing.$spacing-03; }
 .graph-heading h2 { @include type.type-style('heading-compact-02'); margin: 0; }
 .graph-heading .button-row { margin-left: auto; }
 .graph-summary { display: flex; flex-wrap: wrap; gap: spacing.$spacing-02; padding: 0 spacing.$spacing-05 spacing.$spacing-04; }
-#nodeCanvas { position: relative; flex: 1 1 auto; min-height: 220px; background-color: var(--cds-background); background-image: radial-gradient(var(--cds-border-subtle-01) 1px, transparent 1px); background-size: spacing.$spacing-05 spacing.$spacing-05; border-block: 1px solid var(--cds-border-subtle-00); }
+#nodeCanvas { position: absolute; inset: 0; background-color: var(--cds-background); background-image: radial-gradient(var(--cds-border-subtle-01) 1px, transparent 1px); background-size: spacing.$spacing-05 spacing.$spacing-05; border-block: 1px solid var(--cds-border-subtle-00); }
 #nodeCanvas > svg { display: block; width: 100%; height: 100%; position: absolute; inset: 0; touch-action: none; cursor: grab; }
 #nodeCanvas > svg:active { cursor: grabbing; }
 .graph-edge { fill: none; stroke: var(--cds-border-strong-01); stroke-width: 5; }
@@ -88,19 +73,22 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 [data-node].selected .graph-node { fill: var(--cds-layer-selected-01); stroke: var(--cds-border-interactive); stroke-width: 3; }
 .graph-name { @include type.type-style('body-compact-01'); fill: var(--cds-text-primary); }
 .graph-meta { @include type.type-style('label-01'); fill: var(--cds-text-secondary); }
-.graph-help { @include type.type-style('helper-text-01'); color: var(--cds-text-secondary); padding: spacing.$spacing-03 spacing.$spacing-05; margin: 0; }
-.node-inspector { padding: spacing.$spacing-04 spacing.$spacing-05; max-height: 44vh; min-height: 80px; overflow-y: auto; border-top: 1px solid var(--cds-border-subtle-00); flex-shrink: 1; }
-.inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: spacing.$spacing-03; margin-bottom: spacing.$spacing-04; }
-.inspector-heading h3 { @include type.type-style('heading-compact-01'); margin: 0; }
+.node-inspector { position: absolute; top: spacing.$spacing-04; right: spacing.$spacing-04; z-index: 2; width: min(272px, calc(100% - 2 * #{spacing.$spacing-04})); max-height: calc(100% - 2 * #{spacing.$spacing-04}); padding: spacing.$spacing-05; overflow-y: auto; background: var(--cds-layer-01); border: 1px solid var(--cds-border-strong-01); box-shadow: 0 2px 6px var(--cds-shadow); }
+.inspector-heading { display: flex; align-items: flex-start; flex-direction: column; justify-content: space-between; gap: spacing.$spacing-03; margin-bottom: spacing.$spacing-04; }
+.inspector-heading h3 { @include type.type-style('heading-compact-01'); margin: 0; overflow-wrap: anywhere; }
 .node-inspector pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .node-inspector .cds--accordion { margin-top: spacing.$spacing-05; }
 .graph-notice { border-top: 1px solid var(--cds-border-subtle-00); padding: spacing.$spacing-04 spacing.$spacing-05; max-height: 120px; overflow-y: auto; flex-shrink: 0; }
 .notification-stack { position: fixed; right: spacing.$spacing-05; bottom: spacing.$spacing-05; z-index: 10000; max-width: calc(100vw - 2 * #{spacing.$spacing-05}); }
 .notification-stack .cds--toast-notification { margin: 0; }
 .modal-form { padding-bottom: spacing.$spacing-05; }
-@media (max-width: 1199px) {
-  .workspace { grid-template-columns: 288px minmax(280px, 1fr) 304px; }
-  .workspace.template-mode { grid-template-columns: 288px minmax(280px, 1fr) min(var(--graph-width, 360px), calc(100vw - 568px)); }
-  .viewport-footer span:last-child { display: none; }
-  .header-description { display: none; }
-}
+
+.workspace { margin: 0; padding: 0; position: absolute; inset: 0; }
+.settings-heading { display: flex; align-items: center; justify-content: space-between; gap: spacing.$spacing-03; padding: spacing.$spacing-03 spacing.$spacing-05; }
+.settings-heading h1 { @include type.type-style('heading-compact-01'); margin: 0; }
+.settings-panel > .source-form { padding: spacing.$spacing-05; }
+.viewport-toolbar { position: absolute; top: spacing.$spacing-05; left: spacing.$spacing-05; z-index: 2; display: flex; gap: spacing.$spacing-03; }
+.viewport-toolbar.settings-open { left: calc(320px + #{spacing.$spacing-05}); }
+.graph-canvas { position: relative; flex: 1 1 auto; min-height: 0; }
+.node-fields { display: flex; flex-direction: column; gap: spacing.$spacing-05; }
+.graph-heading, .graph-summary { flex-shrink: 0; }
