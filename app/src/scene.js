@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { invoke } from "@tauri-apps/api/core";
 import { createSurfaceProjector } from "./primitives.js";
 import { createTemplateLayer } from "./template-layer.js";
@@ -202,8 +201,34 @@ export function createScene(host) {
   scene.background = new THREE.Color(getComputedStyle(host).getPropertyValue("--cds-background").trim() || "#262626");
   const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
   camera.position.set(0, 0, 2000);
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
+  // Камера смотрит вдоль постоянной оси; перетаскивание вращает всю планету.
+  const planet = new THREE.Group();
+  scene.add(planet);
+  const events = new AbortController();
+  const { signal } = events;
+  let rotationStart = null, minDistance = 1;
+  renderer.domElement.style.touchAction = 'none';
+  renderer.domElement.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    rotationStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    renderer.domElement.setPointerCapture(event.pointerId);
+  }, { signal });
+  renderer.domElement.addEventListener('pointermove', event => {
+    if (!rotationStart || rotationStart.id !== event.pointerId) return;
+    const scale = Math.PI / Math.max(200, Math.min(host.clientWidth, host.clientHeight));
+    const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+      (event.clientY - rotationStart.y) * scale, (event.clientX - rotationStart.x) * scale, 0, 'YXZ'));
+    planet.quaternion.premultiply(rotation).normalize();
+    rotationStart.x = event.clientX; rotationStart.y = event.clientY;
+  }, { signal });
+  const finishRotation = () => { rotationStart = null; };
+  renderer.domElement.addEventListener('pointerup', finishRotation, { signal });
+  renderer.domElement.addEventListener('pointercancel', finishRotation, { signal });
+  renderer.domElement.addEventListener('lostpointercapture', finishRotation, { signal });
+  renderer.domElement.addEventListener('wheel', event => {
+    event.preventDefault();
+    camera.position.setLength(Math.max(minDistance, Math.min(100000, camera.position.length() * Math.exp(Math.max(-1, Math.min(1, event.deltaY * 0.001))))));
+  }, { signal, passive: false });
   scene.add(new THREE.AmbientLight("#ffffff", 0.6));
   const sun = new THREE.DirectionalLight("#ffffff", 1.8);
   camera.add(sun);
@@ -211,7 +236,7 @@ export function createScene(host) {
   scene.add(camera);
 
   const group = new THREE.Group();
-  scene.add(group);
+  planet.add(group);
   let parts = {}, previousAspect = null;
   let templateLayer = null, project = null, planetRadius = 500, onPick = () => {};
   const picker = new THREE.Raycaster();
@@ -221,7 +246,7 @@ export function createScene(host) {
     if (!templateLayer || !pointerStart || Math.hypot(e.clientX-pointerStart[0], e.clientY-pointerStart[1]) > 5) return;
     const r = renderer.domElement.getBoundingClientRect();
     picker.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1, -(e.clientY-r.top)/r.height*2+1), camera);
-    group.updateMatrixWorld(true);
+    planet.updateMatrixWorld(true);
     // Поверхность участвует в проверке, чтобы нельзя было выбрать область на обратной стороне.
     const hits = picker.intersectObjects([parts.surface, ...templateLayer.zones.children.filter((g) => g.visible)], true);
     let o = hits[0]?.object;
@@ -245,7 +270,6 @@ export function createScene(host) {
   resize();
 
   renderer.setAnimationLoop(() => {
-    controls.update();
     renderer.render(scene, camera);
   });
 
@@ -353,6 +377,20 @@ export function createScene(host) {
     }
     group.add(fluids);
 
+    // Полюса привязаны к оси Z игры и вращаются вместе с поверхностью и областями.
+    for (const [name, sign, color] of [['Север', 1, '#78a9ff'], ['Юг', -1, '#ffb3b8']]) {
+      const label = document.createElement('canvas'); label.width = 256; label.height = 80;
+      const context = label.getContext('2d');
+      context.fillStyle = '#161616'; context.fillRect(0, 0, 256, 80);
+      context.fillStyle = color; context.font = '36px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.fillText(name, 128, 40);
+      const texture = new THREE.CanvasTexture(label); texture.colorSpace = THREE.SRGBColorSpace;
+      const marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false }));
+      marker.position.set(0, 0, sign * p.max_radius * 1.12);
+      marker.scale.set(p.radius * 0.28, p.radius * 0.0875, 1); marker.renderOrder = 1000;
+      group.add(marker);
+    }
+
     const spots = p.metal.spots;
     const marker = new THREE.CylinderGeometry(5, 5, 14, 12);
     marker.translate(0, 7, 0);
@@ -385,9 +423,8 @@ export function createScene(host) {
     planetRadius = p.radius;
     if (template) project = createSurfaceProjector(p);
     const dist = p.max_radius * 3.2 * Math.max(1, 1/camera.aspect);
-    controls.target.set(0, 0, 0);
     camera.position.setLength(dist);
-    controls.minDistance = p.max_radius * 1.05;
+    minDistance = p.max_radius * 1.05;
   }
 
   function toggle(o) {
@@ -410,7 +447,7 @@ export function createScene(host) {
     return templateLayer.placements;
   }
   return { show, toggle, setApplied,
-    dispose() { observer.disconnect(); renderer.setAnimationLoop(null); clear(); controls.dispose(); renderer.dispose(); renderer.domElement.remove(); },
+    dispose() { observer.disconnect(); renderer.setAnimationLoop(null); clear(); events.abort(); renderer.dispose(); renderer.domElement.remove(); },
     selectNode: (id) => templateLayer?.select(id),
     toggleApplied: (options) => templateLayer?.toggle(options),
   };

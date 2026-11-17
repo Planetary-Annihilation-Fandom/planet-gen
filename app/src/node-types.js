@@ -70,5 +70,5 @@ export function validateNode(node) {
     if (f.type === "text" && (typeof v !== "string" || !v.trim() || v.length > f.maxLength)) throw new Error(`${f.label}: нужно от 1 до ${f.maxLength} символов`);
   }
   if (node.kind === "blocker" && node.pattern === "gate" && node.chain.step > node.radius*2+1e-8) throw new Error("Шаг цепочки не должен превышать диаметр блокера");
-  if (node.canvas && ![node.canvas.x, node.canvas.y].every((v) => Number.isFinite(v) && Math.abs(v) <= 10000)) throw new Error("Положение ноды вне канваса");
+  if (node.canvas && ![node.canvas.x, node.canvas.y].every((v) => Number.isFinite(v))) throw new Error("Некорректное положение ноды");
 }

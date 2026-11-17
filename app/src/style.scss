@@ -54,30 +54,6 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .graph-heading h2 { @include type.type-style('heading-compact-02'); margin: 0; }
 .graph-heading .button-row { margin-left: auto; }
 .graph-summary { display: flex; flex-wrap: wrap; gap: spacing.$spacing-02; padding: 0 spacing.$spacing-05 spacing.$spacing-04; }
-#nodeCanvas { position: absolute; inset: 0; background-color: var(--cds-background); background-image: radial-gradient(var(--cds-border-subtle-01) 1px, transparent 1px); background-size: spacing.$spacing-05 spacing.$spacing-05; border-block: 1px solid var(--cds-border-subtle-00); }
-#nodeCanvas > svg { display: block; width: 100%; height: 100%; position: absolute; inset: 0; touch-action: none; cursor: grab; }
-#nodeCanvas > svg:active { cursor: grabbing; }
-.graph-edge { fill: none; stroke: var(--cds-border-strong-01); stroke-width: 5; }
-.graph-edge.selected { stroke: var(--cds-interactive); }
-.graph-edge-hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; cursor: context-menu; }
-[data-edge]:focus-visible .graph-edge { stroke: var(--cds-focus); stroke-width: 7; }
-.graph-preview { fill: none; stroke: var(--cds-interactive); stroke-width: 4; stroke-dasharray: 7 5; pointer-events: none; }
-.graph-port { stroke: var(--cds-layer-01); stroke-width: 2; cursor: crosshair; }
-.graph-port:hover { stroke: var(--cds-focus); stroke-width: 4; }
-[data-node].inactive { opacity: 0.55; }
-#nodeCanvas svg.connecting, #nodeCanvas svg.connecting * { cursor: crosshair; }
-.graph-node { fill: var(--cds-layer-01); stroke: var(--cds-border-strong-01); stroke-width: 1.5; }
-[data-node] { cursor: pointer; outline: none; }
-[data-node]:hover .graph-node { fill: var(--cds-layer-hover-01); }
-[data-node]:focus-visible .graph-node { stroke: var(--cds-focus); stroke-width: 3; }
-[data-node].selected .graph-node { fill: var(--cds-layer-selected-01); stroke: var(--cds-border-interactive); stroke-width: 3; }
-.graph-name { @include type.type-style('body-compact-01'); fill: var(--cds-text-primary); }
-.graph-meta { @include type.type-style('label-01'); fill: var(--cds-text-secondary); }
-.node-inspector { position: absolute; top: spacing.$spacing-04; right: spacing.$spacing-04; z-index: 2; width: min(272px, calc(100% - 2 * #{spacing.$spacing-04})); max-height: calc(100% - 2 * #{spacing.$spacing-04}); padding: spacing.$spacing-05; overflow-y: auto; background: var(--cds-layer-01); border: 1px solid var(--cds-border-strong-01); box-shadow: 0 2px 6px var(--cds-shadow); }
-.inspector-heading { display: flex; align-items: flex-start; flex-direction: column; justify-content: space-between; gap: spacing.$spacing-03; margin-bottom: spacing.$spacing-04; }
-.inspector-heading h3 { @include type.type-style('heading-compact-01'); margin: 0; overflow-wrap: anywhere; }
-.node-inspector pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.node-inspector .cds--accordion { margin-top: spacing.$spacing-05; }
 .graph-notice { border-top: 1px solid var(--cds-border-subtle-00); padding: spacing.$spacing-04 spacing.$spacing-05; max-height: 120px; overflow-y: auto; flex-shrink: 0; }
 .notification-stack { position: fixed; right: spacing.$spacing-05; bottom: spacing.$spacing-05; z-index: 10000; max-width: calc(100vw - 2 * #{spacing.$spacing-05}); }
 .notification-stack .cds--toast-notification { margin: 0; }
@@ -92,3 +68,37 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .graph-canvas { position: relative; flex: 1 1 auto; min-height: 0; }
 .node-fields { display: flex; flex-direction: column; gap: spacing.$spacing-05; }
 .graph-heading, .graph-summary { flex-shrink: 0; }
+
+/* Панели участвуют в раскладке: WebGL получает фактический оставшийся размер. */
+.workspace { display: grid; grid-template-columns: 0 minmax(0, 1fr) 320px; }
+.workspace.settings-visible { grid-template-columns: 320px minmax(0, 1fr) 320px; }
+.workspace.template-mode { grid-template-columns: 0 minmax(0, 1fr) clamp(320px, var(--graph-width, 34vw), calc(100vw - 240px)); }
+.workspace.template-mode.settings-visible { grid-template-columns: 320px minmax(0, 1fr) clamp(320px, var(--graph-width, 34vw), calc(100vw - 560px)); }
+.settings-panel, .planet-workspace, .graph-panel, .result-panel { position: relative; inset: auto; width: auto; height: 100%; }
+.settings-panel { grid-column: 1; grid-row: 1; }
+.planet-workspace { grid-column: 2; grid-row: 1; }
+.graph-panel, .result-panel { grid-column: 3; grid-row: 1; }
+.viewport-toolbar.settings-open { left: spacing.$spacing-05; }
+#nodeCanvas { min-width: 0; background: var(--cds-background); border-block: 1px solid var(--cds-border-subtle-00); }
+.graph-navigation { padding: spacing.$spacing-02 spacing.$spacing-05; flex-shrink: 0; }
+.react-flow { --xy-background-color: var(--cds-background); --xy-edge-stroke: var(--cds-border-strong-01); --xy-edge-stroke-selected: var(--cds-focus); --xy-edge-stroke-width: 2; --xy-background-pattern-dots-color: var(--cds-border-subtle-01); }
+.template-node { width: 300px; color: var(--cds-text-primary); background: var(--cds-layer-01); border: 1px solid var(--cds-border-strong-01); }
+.template-node.selected { outline: 2px solid var(--cds-border-interactive); }
+.template-node.inactive { opacity: 0.65; }
+.template-node-heading { display: flex; flex-direction: column; gap: spacing.$spacing-02; padding: spacing.$spacing-04 spacing.$spacing-05; overflow-wrap: anywhere; cursor: grab; }
+.template-node-heading strong { @include type.type-style('heading-compact-01'); }
+.template-node-heading span { @include type.type-style('label-01'); color: var(--cds-text-secondary); }
+.template-node .react-flow__handle { top: 28px; width: 10px; height: 10px; border: 2px solid var(--cds-background); background: var(--cds-interactive); }
+.template-node .cds--accordion__content { padding: spacing.$spacing-04; }
+.node-fields { max-height: 440px; overflow-y: auto; padding: spacing.$spacing-02; }
+
+.workspace.template-mode.graph-collapsed { grid-template-columns: 0 minmax(0, 1fr) 64px; }
+.workspace.template-mode.settings-visible.graph-collapsed { grid-template-columns: 320px minmax(0, 1fr) 64px; }
+.graph-collapsed .graph-panel > :not(.graph-heading), .graph-collapsed .graph-heading h2,
+.graph-collapsed .graph-heading .button-row > :not(:first-child) { display: none; }
+.graph-collapsed .graph-heading { padding: spacing.$spacing-02; }
+
+.react-flow__node:has(.template-node.expanded) { z-index: 200 !important; }
+.react-flow__node:focus-within { z-index: 201 !important; }
+
+.graph-collapsed .graph-heading .cds--btn { padding-inline: spacing.$spacing-02; min-width: 0; width: 48px; }

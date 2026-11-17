@@ -1,83 +1,135 @@
-import { useEffect, useRef, useState } from 'react';
-import { Button, InlineNotification, Menu, MenuItem, MenuItemDivider, Tag } from '@carbon/react';
-import { Maximize, Redo, Undo } from '@carbon/icons-react';
-import { createTemplateGraph } from '../template-graph.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReactFlow, Background, Handle, Position } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { Accordion, AccordionItem, Button, InlineNotification, Menu, MenuItem, MenuItemDivider, Tag } from '@carbon/react';
 import { setupGraphPanel } from '../graph-panel.js';
 import { NODE_TYPES } from '../node-types.js';
-import { NodeInspector } from './NodeInspector.jsx';
+import { NodeField } from './NodeField.jsx';
 
-export function GraphPanel({ snapshot, store, notify, hidden }) {
-  const panel = useRef(), handle = useRef(), host = useRef(), graph = useRef();
-  const [menu, setMenu] = useState(null);
+const VIEW_KEY = 'planet-gen.graph-view.v1';
+function readViews() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+  } catch { return {}; }
+}
+function validView(view) {
+  return view && [view.x, view.y, view.zoom].every(Number.isFinite) && view.zoom >= 0.02 && view.zoom <= 4;
+}
+
+// React Flow измеряет карточку, но её раскрытие не запускает раскладку или движение камеры.
+function TemplateNode({ data, selected }) {
+  const { node, store, inactive } = data;
+  const [open, setOpen] = useState(false);
+  const fields = NODE_TYPES[node.kind].fields.filter(field => !field.when || field.when(node));
+  return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}${open ? ' expanded' : ''}`} aria-label={node.name}>
+    {node.kind !== 'spawn' && <Handle type="target" position={Position.Left} id="input" aria-label="Вход" />}
+    <header className="template-node-heading"><strong>{node.name}</strong><span>{NODE_TYPES[node.kind].title}</span></header>
+    <Handle type="source" position={Position.Right} id="output" aria-label="Выход" />
+    <Accordion size="sm" className="nodrag nowheel nopan">
+      <AccordionItem title="Параметры" open={open} onHeadingClick={() => setOpen(value => !value)}>
+        {open && <div className="node-fields">{fields.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}</div>}
+      </AccordionItem>
+    </Accordion>
+  </section>;
+}
+const nodeTypes = { template: TemplateNode };
+
+export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onCollapse }) {
+  const panel = useRef(), handle = useRef(), flow = useRef(), views = useRef(readViews());
+  const [menu, setMenu] = useState(null), [nodes, setNodes] = useState([]), [viewport, setViewport] = useState(() => {
+    const saved = views.current[snapshot.template.id];
+    return validView(saved) ? saved : { x: 24, y: 24, zoom: 0.7 };
+  });
+  const templateId = useRef(snapshot.template.id);
   const safe = action => { try { return action(); } catch (error) { notify(error.message, true); } };
-  const actions = useRef();
-  actions.current = {
-    connect: (from, to) => safe(() => store.connect(from, to)),
-    remove: (from, to) => safe(() => store.remove(from, to)),
-    move: (id, position) => safe(() => store.move(id, position)),
-    create: (kind, canvas, parent) => safe(() => {
-      const id = store.create(kind, canvas ?? graph.current.suggest(parent), parent);
-      graph.current.reveal(id);
-    }),
-    duplicate: id => safe(() => { const next = store.duplicate(id, graph.current.suggest(id)); graph.current.reveal(next); }),
+  useEffect(() => setupGraphPanel(panel.current, handle.current), []);
+  useEffect(() => {
+    if (templateId.current !== snapshot.template.id) {
+      templateId.current = snapshot.template.id;
+      const saved = views.current[snapshot.template.id];
+      setViewport(validView(saved) ? saved : { x: 24, y: 24, zoom: 0.7 });
+    }
+    setNodes(snapshot.template.nodes.map(node => ({ id: node.id, type: 'template', position: node.canvas,
+      selected: snapshot.selected === node.id, zIndex: snapshot.selected === node.id ? 100 : 0, data: { node, store, inactive: snapshot.applied.debug.inactiveNodes.includes(node.id) } })));
+  }, [snapshot.template, snapshot.selected, snapshot.applied, store]);
+  function saveView(view) {
+    views.current[templateId.current] = view;
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify(views.current)); } catch { /* Навигация работает и без сохранения. */ }
+  }
+  const edges = useMemo(() => snapshot.template.links.map(link => ({ id: `${link.from}:${link.to}`, source: link.from, target: link.to,
+    sourceHandle: 'output', targetHandle: 'input', type: 'smoothstep' })), [snapshot.template]);
+  function suggest(parent) {
+    const position = snapshot.template.nodes.find(node => node.id === parent)?.canvas;
+    return position ? { x: position.x + 360, y: position.y + 120 } : flow.current.screenToFlowPosition({ x: panel.current.getBoundingClientRect().left + 80, y: 180 });
+  }
+  const actions = {
+    duplicate: id => safe(() => store.duplicate(id, suggest(id))),
     deleteNode: id => safe(() => store.deleteNode(id)),
-    undo: () => safe(() => store.travel('undo')),
-    redo: () => safe(() => store.travel('redo')),
-    arrange: () => safe(() => { store.arrange(); requestAnimationFrame(() => graph.current.fit()); }),
-    error: message => notify(message, true),
-    contextMenu: setMenu,
+    undo: () => safe(() => store.travel('undo')), redo: () => safe(() => store.travel('redo')),
   };
   useEffect(() => {
-    const proxy = Object.fromEntries(Object.keys(actions.current).map(key => [key, (...args) => actions.current[key](...args)]));
-    graph.current = createTemplateGraph(host.current, id => store.select(id), proxy);
-    const cleanup = setupGraphPanel(panel.current, handle.current);
-    return () => { graph.current.dispose(); cleanup?.(); };
-  }, [store]);
-  useEffect(() => { graph.current.show(snapshot.applied); }, [snapshot.applied]);
-  useEffect(() => { graph.current.select(snapshot.selected); }, [snapshot.selected, snapshot.applied]);
-  useEffect(() => {
-    if (hidden) { setMenu(null); return; }
+    if (hidden || collapsed) { setMenu(null); return; }
     function keydown(event) {
       if (event.target.closest('input,select,textarea,[contenteditable=true],[role=menu]')) return;
       if ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
-        event.preventDefault(); actions.current[event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo']();
+        event.preventDefault(); safe(() => store.travel(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo'));
       }
-      if (event.key === 'Delete' && store.getSnapshot().selected && !event.target.closest('[data-edge]')) {
-        event.preventDefault(); actions.current.deleteNode(store.getSnapshot().selected);
-      }
+      if (event.key === 'Delete' && store.getSnapshot().selected) { event.preventDefault(); safe(() => store.deleteNode(store.getSnapshot().selected)); }
     }
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
-  }, [hidden, store]);
+  }, [hidden, collapsed, store]);
+  function contextMenu(event, node) {
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY, nodeId: node?.id, canvas: flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
+  }
   const command = action => () => { setMenu(null); action(); };
   return <aside id="templateCard" className="graph-panel" ref={panel} hidden={hidden} aria-label="Граф шаблона">
     <div ref={handle} id="graphSplitter" role="separator" tabIndex={0} aria-label="Ширина панели графа" aria-orientation="vertical" />
-    <div className="graph-heading">
-      <h2>Граф</h2>
-      <div className="button-row">
-        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Undo} iconDescription="Отменить" disabled={!snapshot.canUndo} onClick={() => actions.current.undo()} />
-        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Redo} iconDescription="Повторить" disabled={!snapshot.canRedo} onClick={() => actions.current.redo()} />
-        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Maximize} iconDescription="Вписать граф" onClick={() => graph.current.fit()} />
-      </div>
-    </div>
+    <div className="graph-heading"><h2>Граф</h2><div className="button-row">
+      <Button kind="ghost" size="sm" onClick={onCollapse} aria-expanded={!collapsed}>{collapsed ? 'Граф' : 'Свернуть'}</Button>
+      <Button kind="ghost" size="sm" disabled={!snapshot.canUndo} onClick={actions.undo}>Отменить</Button>
+      <Button kind="ghost" size="sm" disabled={!snapshot.canRedo} onClick={actions.redo}>Повторить</Button>
+    </div></div>
     <div className="graph-summary"><Tag type="gray" size="sm">{snapshot.parameters.players} игроков</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
-    <div className="graph-canvas">
-      <div ref={host} id="nodeCanvas" />
-      <NodeInspector snapshot={snapshot} store={store} actions={actions.current} />
+    <div className="graph-canvas" id="nodeCanvas">
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={instance => { flow.current = instance; }}
+        onNodesChange={changes => {
+          setNodes(current => changes.applyTo(current));
+          // Сохраняем завершённое перемещение мышью и шаги с клавиатуры.
+          for (const change of changes) {
+            if (change.type === 'position' && change.position && !change.dragging) safe(() => store.move(change.id, change.position));
+          }
+        }}
+        onNodeDragStop={(_, node) => safe(() => store.move(node.id, node.position))}
+        onNodeClick={(_, node) => store.select(node.id)} onPaneClick={() => { store.select(null); setMenu(null); }}
+        onConnect={({ source, target }) => safe(() => store.connect(source, target))}
+        onEdgeContextMenu={(event, edge) => { event.preventDefault(); safe(() => store.remove(edge.source, edge.target)); }}
+        onNodeContextMenu={contextMenu} onPaneContextMenu={event => contextMenu(event)}
+        viewport={viewport} onViewportChange={setViewport} onMoveEnd={(_, view) => saveView(view)}
+        minZoom={0.02} maxZoom={4} autoPanOnNodeDrag={false} autoPanOnConnect={false} autoPanOnNodeFocus={false}
+        deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={null} selectNodesOnDrag={false}
+        zoomOnDoubleClick={false} colorMode="dark">
+        <Background />
+      </ReactFlow>
+    </div>
+    <div className="graph-navigation button-row" aria-label="Навигация по графу">
+      <Button kind="ghost" size="sm" onClick={() => flow.current?.zoomOut()}>−</Button>
+      <Button kind="ghost" size="sm" onClick={() => flow.current?.zoomIn()}>+</Button>
+      <Button kind="ghost" size="sm" onClick={() => flow.current?.fitView({ padding: 0.15 })}>Вписать граф</Button>
     </div>
     {snapshot.applied.debug.error && <div className="graph-notice"><InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast /></div>}
-    <Menu open={!!menu && !hidden} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
+    <Menu open={!!menu && !hidden && !collapsed} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
       <MenuItem label={menu?.nodeId ? 'Создать дочернюю ноду' : 'Создать ноду'}>
-        {Object.entries(NODE_TYPES).map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => actions.current.create(kind, menu?.nodeId ? undefined : menu?.canvas, menu?.nodeId))} />)}
+        {Object.entries(NODE_TYPES).map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
       </MenuItem>
-      {menu?.nodeId && <MenuItem label="Копировать ноду" onClick={command(() => actions.current.duplicate(menu.nodeId))} />}
-      {menu?.nodeId && <MenuItem label="Удалить ноду" kind="danger" onClick={command(() => actions.current.deleteNode(menu.nodeId))} />}
+      {menu?.nodeId && <MenuItem label="Копировать ноду" onClick={command(() => actions.duplicate(menu.nodeId))} />}
+      {menu?.nodeId && <MenuItem label="Удалить ноду" kind="danger" onClick={command(() => actions.deleteNode(menu.nodeId))} />}
       <MenuItemDivider />
-      <MenuItem label="Отменить" shortcut="Ctrl+Z" disabled={!snapshot.canUndo} onClick={command(() => actions.current.undo())} />
-      <MenuItem label="Повторить" shortcut="Ctrl+Shift+Z" disabled={!snapshot.canRedo} onClick={command(() => actions.current.redo())} />
-      <MenuItemDivider />
-      <MenuItem label="Разложить граф" onClick={command(() => actions.current.arrange())} />
-      <MenuItem label="Вписать граф" onClick={command(() => graph.current.fit())} />
+      <MenuItem label="Отменить" shortcut="Ctrl+Z" disabled={!snapshot.canUndo} onClick={command(actions.undo)} />
+      <MenuItem label="Повторить" shortcut="Ctrl+Shift+Z" disabled={!snapshot.canRedo} onClick={command(actions.redo)} />
+      <MenuItem label="Вписать граф" onClick={command(() => flow.current?.fitView({ padding: 0.15 }))} />
     </Menu>
   </aside>;
 }

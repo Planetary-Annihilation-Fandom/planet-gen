@@ -1,19 +1,25 @@
 import neighbors from '../templates/neighbor_fronts.json';
 import shared from '../templates/shared_regions.json';
 import { validateTemplate, applyTemplate } from '../template-engine.js';
-import { connectNodes, disconnectNodes } from '../graph-model.js';
+import { connectNodes, disconnectNodes, layoutGraph } from '../graph-model.js';
 import { createNode, setField } from '../node-types.js';
 
 const STORAGE = 'planet-gen.templates.v1';
 
-// The editor model owns persistence and history; React and the SVG renderer consume snapshots.
+// Модель хранит шаблоны и историю; исходная раскладка назначается один раз при загрузке.
+function withPositions(raw) {
+  const template = validateTemplate(raw);
+  const { positions } = layoutGraph(template);
+  for (const node of template.nodes) node.canvas ??= positions.get(node.id);
+  return template;
+}
 export function createTemplateStore(storage = globalThis.localStorage) {
-  let templates = [validateTemplate(neighbors), validateTemplate(shared)];
+  let templates = [withPositions(neighbors), withPositions(shared)];
   let loadError = '';
   try {
     const saved = JSON.parse(storage?.getItem(STORAGE) ?? '[]');
     if (!Array.isArray(saved) || saved.length > 52) throw new Error('Некорректный список шаблонов');
-    const restored = saved.map(validateTemplate);
+    const restored = saved.map(withPositions);
     for (const item of restored) {
       const i = templates.findIndex(t => t.id === item.id);
       if (i < 0) templates.push(item); else templates[i] = item;
@@ -98,7 +104,6 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     deleteNode(nodeId) {
       edit(t => { t.nodes = t.nodes.filter(n => n.id !== nodeId); t.links = t.links.filter(l => l.from !== nodeId && l.to !== nodeId); });
     },
-    arrange() { edit(t => { for (const node of t.nodes) delete node.canvas; }, { generate: false }); },
     travel(direction) {
       const h = history(), from = direction === 'undo' ? h.past : h.future, to = direction === 'undo' ? h.future : h.past;
       if (!from.length) return;
@@ -106,7 +111,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
       commit(from.at(-1), { remember: false }); from.pop(); to.push(old); emit();
     },
     add(raw) {
-      const next = validateTemplate(raw);
+      const next = withPositions(raw);
       if (templates.some(t => t.id === next.id)) throw new Error(`Шаблон ${next.id} уже существует; используйте другой ID`);
       if (templates.length >= 52) throw new Error('Сохранено слишком много шаблонов');
       save([...templates, next]); store.choose(next.id);
