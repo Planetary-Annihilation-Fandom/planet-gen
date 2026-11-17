@@ -21,14 +21,20 @@ function validView(view) {
 function TemplateNode({ data, selected }) {
   const { node, store, inactive } = data;
   const [open, setOpen] = useState(false);
-  const fields = NODE_TYPES[node.kind].fields.filter(field => !field.when || field.when(node));
+  const type = NODE_TYPES[node.kind];
+  const fields = type.fields.filter(field => !field.when || field.when(node));
+  const primary = fields.filter(field => type.primaryFields.includes(field.path));
+  const extra = fields.filter(field => !type.primaryFields.includes(field.path));
   return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}${open ? ' expanded' : ''}`} aria-label={node.name}>
     {node.kind !== 'spawn' && <Handle type="target" position={Position.Left} id="input" aria-label="Вход" />}
     <header className="template-node-heading"><strong>{node.name}</strong><span>{NODE_TYPES[node.kind].title}</span></header>
     <Handle type="source" position={Position.Right} id="output" aria-label="Выход" />
+    <div className="node-fields node-primary-fields nodrag nowheel nopan" aria-label="Основные параметры">
+      {primary.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}
+    </div>
     <Accordion size="sm" className="nodrag nowheel nopan">
-      <AccordionItem title="Параметры" open={open} onHeadingClick={() => setOpen(value => !value)}>
-        {open && <div className="node-fields">{fields.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}</div>}
+      <AccordionItem title="Дополнительно" open={open} onHeadingClick={() => setOpen(value => !value)}>
+        {open && <div className="node-fields">{extra.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}</div>}
       </AccordionItem>
     </Accordion>
   </section>;
@@ -51,7 +57,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
       setViewport(validView(saved) ? saved : { x: 24, y: 24, zoom: 0.7 });
     }
     setNodes(snapshot.template.nodes.map(node => ({ id: node.id, type: 'template', position: node.canvas,
-      selected: snapshot.selected === node.id, zIndex: snapshot.selected === node.id ? 100 : 0, data: { node, store, inactive: snapshot.applied.debug.inactiveNodes.includes(node.id) } })));
+      selected: snapshot.selected === node.id, zIndex: snapshot.selected === node.id ? 100 : 1, data: { node, store, inactive: snapshot.applied.debug.inactiveNodes.includes(node.id) } })));
   }, [snapshot.template, snapshot.selected, snapshot.applied, store]);
   function saveView(view) {
     views.current[templateId.current] = view;
@@ -94,7 +100,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
     </div></div>
     <div className="graph-summary"><Tag type="gray" size="sm">{snapshot.parameters.players} игроков</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
     <div className="graph-canvas" id="nodeCanvas">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={instance => { flow.current = instance; }}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} defaultEdgeOptions={{ zIndex: 0 }} elevateEdgesOnSelect={false} onInit={instance => { flow.current = instance; }}
         onNodesChange={changes => {
           setNodes(current => changes.applyTo(current));
           // Сохраняем завершённое перемещение мышью и шаги с клавиатуры.

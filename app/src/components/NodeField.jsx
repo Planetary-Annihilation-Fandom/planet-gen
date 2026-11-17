@@ -24,7 +24,7 @@ export function NodeField({ node, field, store }) {
     else timer.current = setTimeout(() => commit(value), 240);
   }
   const props = { id: `node-${node.id}-${field.path.replaceAll('.', '-')}`, value: draft, onChange: change, invalid: !!error, invalidText: error };
-  return <div className={field.type === 'number' ? '' : 'wide-field'}>
+  return <div className="node-field">
     {field.type === 'select' ? <Choice {...props} label={field.label} options={field.options} />
       : field.type === 'number' ? <NumericField {...props} label={field.label} min={field.min} max={field.max} step={field.step} onBlur={() => commit(draft)} />
         : <TextInput {...props} id={props.id} labelText={field.label} size="sm" maxLength={field.maxLength} onChange={event => change(event.target.value)} onBlur={() => commit(draft)} />}
