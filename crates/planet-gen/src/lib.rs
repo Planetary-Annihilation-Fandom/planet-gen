@@ -6,6 +6,7 @@ pub mod config;
 pub mod csg;
 pub mod math;
 pub mod metal;
+pub mod nav_voxels;
 pub mod noise;
 pub mod papa;
 pub mod raycast;

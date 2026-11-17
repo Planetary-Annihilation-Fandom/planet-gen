@@ -41,6 +41,8 @@ pub struct BrushMesh {
     pub groups: Vec<Group>,
     /// Кисть добавлена процедурной генерацией биома, а не взята из `planetCSG`.
     pub procedural: bool,
+    #[serde(skip)]
+    pub(crate) pathable: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -58,11 +60,13 @@ pub struct Placement {
     pub transform: [f32; 12],
     pub proj: String,
     pub procedural: bool,
+    pathable: Option<bool>,
 }
 
 /// Переводит сохранённый `planetCSG` в последовательность операций над объёмами.
 /// Матрица уже содержит высоту, масштаб и поворот; поля редактора повторно не применяются.
 /// Порядок записей сохраняется: добавление после вычитания может вернуть удалённый объём.
+/// Если у экземпляра задано `pathable`, оно имеет приоритет над значением из спецификации.
 pub fn placements_from_json(csg: &[Value]) -> Vec<Placement> {
     let mut placements: Vec<Placement> = csg.iter()
         .filter_map(|c| {
@@ -79,7 +83,8 @@ pub fn placements_from_json(csg: &[Value]) -> Vec<Placement> {
             }
             // У 4×4 последняя строка не участвует в affine transform.
             let proj = c.get("proj").and_then(Value::as_str).unwrap_or("BP_Terrain").to_string();
-            Some(Placement { spec, op, transform, proj, procedural: false })
+            let pathable = c.get("pathable").and_then(Value::as_bool);
+            Some(Placement { spec, op, transform, proj, procedural: false, pathable })
         })
         .collect();
     // Последняя операция над тем же объёмом полностью заменяет предыдущие.
@@ -188,6 +193,7 @@ pub struct Installed {
     pub spec: String,
     pub op: Op,
     pub procedural: bool,
+    pathable: bool,
     /// Треугольники в мировых координатах, обращённые наружу; `tag` — номер материала.
     pub polys: Vec<Poly>,
     pub materials: Vec<Option<String>>,
@@ -197,6 +203,7 @@ pub struct Installed {
 
 struct Source {
     papa: Papa,
+    pathable: bool,
     /// Диффузная текстура каждого материала файла.
     materials: Vec<Option<String>>,
 }
@@ -204,6 +211,7 @@ struct Source {
 /// Загружает геометрию кистей и готовит замкнутые объёмы для булевых операций.
 /// Порядок преобразований совпадает с игрой: вершина → meshToModel → transform → проекция.
 /// Установка ещё не удаляет скрытые грани: пересечения обрабатывает `boolean`.
+/// Признак `pathable` передаётся вместе с геометрией, чтобы слой навигации учёл настройки кисти.
 pub fn install(media: &Media, list: &[Placement], sample: &dyn Fn(V3) -> f32) -> (Vec<Installed>, Vec<(String, String)>) {
     let mut cache: HashMap<String, Result<Source, String>> = HashMap::new();
     let mut out = Vec::new();
@@ -212,17 +220,18 @@ pub fn install(media: &Media, list: &[Placement], sample: &dyn Fn(V3) -> f32) ->
         // Один файл может использоваться десятками экземпляров. Кэшируем исходные
         // ресурсы и ошибки чтения; положение каждой кисти рассчитывается отдельно.
         let entry = cache.entry(pl.spec.clone()).or_insert_with(|| {
-            let papa_path = read_json(media, &pl.spec)
-                .and_then(|v| v.get("papa").and_then(Value::as_str).map(str::to_string))
+            let spec = read_json(media, &pl.spec).ok_or_else(|| "нет поля papa".to_string())?;
+            let papa_path = spec.get("papa").and_then(Value::as_str)
                 .ok_or_else(|| "нет поля papa".to_string())?;
-            let papa = Papa::parse(&media.read(&papa_path)?)?;
+            let papa = Papa::parse(&media.read(papa_path)?)?;
+            let pathable = spec.get("pathable").and_then(Value::as_bool).unwrap_or(false);
             if papa.mesh_bindings.is_empty() {
                 return Err("в papa нет мешей, привязанных к моделям".into());
             }
             let materials = (0..papa.materials.len())
                 .map(|m| papa.material_texture(m, "DiffuseTexture").map(str::to_string))
                 .collect();
-            Ok(Source { papa, materials })
+            Ok(Source { papa, materials, pathable })
         });
         let src = match entry {
             Ok(x) => x,
@@ -288,6 +297,7 @@ pub fn install(media: &Media, list: &[Placement], sample: &dyn Fn(V3) -> f32) ->
             }
         }
         out.push(Installed {
+            pathable: pl.pathable.unwrap_or(src.pathable),
             spec: pl.spec.clone(),
             op: pl.op,
             procedural: pl.procedural,
@@ -543,6 +553,7 @@ pub fn boolean(
 /// Превращает оставшиеся многоугольники в треугольники для просмотра и экспорта.
 /// Группировка по исходному материалу сохраняет связь новых частей с текстурами;
 /// UV в точках разреза уже интерполированы при создании этих частей.
+/// Вместе с гранями сохраняет признак проходимости кисти для расчёта вокселей.
 fn to_mesh(b: &Installed, mut kept: Vec<Poly>) -> BrushMesh {
     kept.sort_by_key(|p| p.tag);
     let mut m = BrushMesh {
@@ -553,6 +564,7 @@ fn to_mesh(b: &Installed, mut kept: Vec<Poly>) -> BrushMesh {
         indices: Vec::new(),
         groups: Vec::new(),
         procedural: b.procedural,
+        pathable: b.pathable,
     };
     for p in kept {
         let diffuse = b.materials.get(p.tag as usize).cloned().flatten();
