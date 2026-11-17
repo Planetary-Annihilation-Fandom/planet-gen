@@ -156,7 +156,10 @@ impl PlanetBp {
 
 /// Папка `media` установленной игры по умолчанию.
 pub fn default_media() -> PathBuf {
-    PathBuf::from(r"C:\workroot\software\steam\steamapps\common\Planetary Annihilation Titans\media")
+    std::env::var_os("PA_MEDIA_DIR")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\workroot\software\steam\steamapps\common\Planetary Annihilation Titans\media"))
 }
 
 pub fn read_json(media: &Media, spec: &str) -> Option<Value> {

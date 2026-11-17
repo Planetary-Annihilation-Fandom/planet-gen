@@ -1,11 +1,30 @@
 # planet-gen
 
+Публичный репозиторий: [Planetary-Annihilation-Fandom/planet-gen](https://github.com/Planetary-Annihilation-Fandom/planet-gen). История проекта сохранена из `pa-research-tools/pa/planet-gen`.
+
 Воссоздание генератора планет Planetary Annihilation: по параметрам планеты из системы строит ту же сетку поверхности, уровень воды и лавы, что и сервер игры, раскладывает подбиомы, ставит кисти CSG из системы и расставляет металлические точки по алгоритму игры. Текстуры подбиомов и кистей читаются из файлов `.papa` игры.
 
 - `crates/planet-gen`: библиотека и CLI.
 - `app`: просмотрщик на Tauri и three.js.
 
 Что реализовано и что осталось, кратко описано в [PLAN.md](PLAN.md).
+
+## Установка
+
+Нужны Rust stable с Cargo, Node.js 20.19+ или 22.12+ и npm. Для окна нужны системные зависимости Tauri 2; на Windows это Microsoft C++ Build Tools и WebView2 Runtime.
+
+```bash
+git clone https://github.com/Planetary-Annihilation-Fandom/planet-gen.git
+cd planet-gen
+```
+
+Ресурсы Planetary Annihilation: TITANS читаются из установленной игры и в репозиторий не входят. Укажите папку `media` через переменную окружения `PA_MEDIA_DIR`; её используют CLI и просмотрщик. Пример для PowerShell:
+
+```powershell
+$env:PA_MEDIA_DIR = 'D:\SteamLibrary\steamapps\common\Planetary Annihilation Titans\media'
+```
+
+Без переменной сохраняется исходный локальный путь установки: `C:\workroot\software\steam\steamapps\common\Planetary Annihilation Titans\media`. В CLI параметр `--media` имеет приоритет над переменной окружения.
 
 ## CLI
 
@@ -16,17 +35,19 @@ cargo run --release -p planet-gen -- <система.pas|планета.json> --
 На вход подходит файл системы с массивом `planets`, отдельная планета системы или её объект `planet`. Параметры:
 
 - `--planet N`: номер планеты в системе;
-- `--media DIR`: папка `media` игры, откуда читаются архетипы биомов; по умолчанию установка Steam. Для путей `/pa/…` сначала проверяется `pa_ex1` (Titans), затем `pa`; библиотечный `Media::mount` позволяет подключать дополнительные папки поверх ресурсов игры;
+- `--media DIR`: папка `media` игры, откуда читаются архетипы биомов; по умолчанию `PA_MEDIA_DIR` или исходный локальный путь установки. Для путей `/pa/…` сначала проверяется `pa_ex1` (Titans), затем `pa`; библиотечный `Media::mount` позволяет подключать дополнительные папки поверх ресурсов игры;
 - `--slope DEG`: максимальный уклон для металлических точек, по умолчанию 40;
 - `--format summary|json|obj`, `--out FILE`: формат и файл результата.
 
 ## Просмотрщик
 
 ```bash
-cd app && npm install && npx tauri dev
+cd app
+npm ci
+npm run tauri -- dev
 ```
 
-Vite работает на порту 18500 (закреплён в реестре портов корневого README `pa`). У окна три режима:
+Vite работает на фиксированном порту 18500 (`app/vite.config.js` и `app/src-tauri/tauri.conf.json`). В исследовательском окружении PA этот порт также закреплён в общем реестре портов; перед запуском проверьте, свободен ли он. У окна три режима:
 
 - «Существующая»: планета из систем игры или из открытого файла `.pas` вместе с её кистями CSG;
 - «Случайная»: случайное зерно и параметры выбранного архетипа в пределах редактора систем.

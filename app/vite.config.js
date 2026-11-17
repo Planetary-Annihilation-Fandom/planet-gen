@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-// Порт 18500 закреплён в реестре портов корневого README.
+// Порт 18500 совпадает с devUrl в src-tauri/tauri.conf.json; см. README.md.
 export default defineConfig({
   server: { port: 18500, strictPort: true },
   clearScreen: false,
