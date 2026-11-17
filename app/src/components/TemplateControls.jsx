@@ -39,7 +39,6 @@ export function TemplateControls({ store, snapshot, notify, base, layers, setLay
     <Choice id="metalScale" label="Количество металла" value={parameters.metalScale} options={[[0.5, 'Половина'], [1, 'Обычное'], [1.5, 'В 1.5 раза больше'], [2, 'Вдвое больше']]}
       disabled={disabled} onChange={value => store.parameters({ metalScale: Number(value) })} />
     <Button id="rerollTemplate" kind="tertiary" size="sm" renderIcon={Renew} disabled={disabled} onClick={() => store.parameters({ seed: crypto.getRandomValues(new Uint32Array(1))[0] })}>Новый вариант</Button>
-    <p className="helper-text">Изменения автоматически применяются к текущей основе.</p>
     <div className="section-heading">Слои шаблона</div>
     <div className="layer-options">{Object.entries(APPLIED_LAYERS).map(([key, title]) => <Checkbox key={key} id={`layer-${key}`} labelText={title} checked={!!layers[key]}
       onChange={(_, { checked }) => setLayers(previous => ({ ...previous, [key]: checked }))} />)}</div>

@@ -6,7 +6,7 @@ import { setupGraphPanel } from '../graph-panel.js';
 import { NODE_TYPES } from '../node-types.js';
 import { NodeInspector } from './NodeInspector.jsx';
 
-export function GraphPanel({ snapshot, store, notify, baseReady, hidden }) {
+export function GraphPanel({ snapshot, store, notify, hidden }) {
   const panel = useRef(), handle = useRef(), host = useRef(), graph = useRef();
   const [menu, setMenu] = useState(null);
   const safe = action => { try { return action(); } catch (error) { notify(error.message, true); } };
@@ -53,7 +53,7 @@ export function GraphPanel({ snapshot, store, notify, baseReady, hidden }) {
   return <aside id="templateCard" className="graph-panel" ref={panel} hidden={hidden} aria-label="Граф шаблона">
     <div ref={handle} id="graphSplitter" role="separator" tabIndex={0} aria-label="Ширина панели графа" aria-orientation="vertical" />
     <div className="graph-heading">
-      <div><p className="eyebrow">Редактор шаблонов</p><h2>Структура генерации</h2></div>
+      <h2>Граф</h2>
       <div className="button-row">
         <Button kind="ghost" size="sm" hasIconOnly renderIcon={Undo} iconDescription="Отменить" disabled={!snapshot.canUndo} onClick={() => actions.current.undo()} />
         <Button kind="ghost" size="sm" hasIconOnly renderIcon={Redo} iconDescription="Повторить" disabled={!snapshot.canRedo} onClick={() => actions.current.redo()} />
@@ -61,14 +61,11 @@ export function GraphPanel({ snapshot, store, notify, baseReady, hidden }) {
       </div>
     </div>
     <div className="graph-summary"><Tag type="gray" size="sm">{snapshot.parameters.players} игроков</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
-    <div ref={host} id="nodeCanvas" />
-    <p className="graph-help">ПКМ: действия с графом. Тяните ноды и соединяйте порты.</p>
-    <NodeInspector snapshot={snapshot} store={store} actions={actions.current} />
-    <div className="graph-notice">
-      {snapshot.applied.debug.error ? <InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast />
-        : <p className="helper-text">{baseReady ? snapshot.applied.debug.balance : 'Сгенерируйте основу, чтобы увидеть шаблон.'} {snapshot.applied.debug.warnings.join('. ')}
-          {!!snapshot.applied.debug.inactiveNodes.length && ` Без результата нод: ${snapshot.applied.debug.inactiveNodes.length}.`}</p>}
+    <div className="graph-canvas">
+      <div ref={host} id="nodeCanvas" />
+      <NodeInspector snapshot={snapshot} store={store} actions={actions.current} />
     </div>
+    {snapshot.applied.debug.error && <div className="graph-notice"><InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast /></div>}
     <Menu open={!!menu && !hidden} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
       <MenuItem label={menu?.nodeId ? 'Создать дочернюю ноду' : 'Создать ноду'}>
         {Object.entries(NODE_TYPES).map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => actions.current.create(kind, menu?.nodeId ? undefined : menu?.canvas, menu?.nodeId))} />)}

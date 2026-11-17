@@ -5,8 +5,7 @@ export function setupGraphPanel(panel, handle) {
   const key = "planet-gen.graph-width.v1";
   let start = null;
   function bounds() {
-    const left = document.getElementById("panel").getBoundingClientRect().width || 300;
-    return { min: 320, max: Math.max(320, window.innerWidth-left-280) };
+    return { min: 320, max: Math.max(320, window.innerWidth-48) };
   }
   function resize(width, save = true) {
     const { min, max } = bounds();

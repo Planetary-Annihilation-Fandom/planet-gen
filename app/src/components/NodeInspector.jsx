@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Accordion, AccordionItem, Button, TextInput } from '@carbon/react';
-import { Copy, TrashCan } from '@carbon/icons-react';
+import { Close, Copy, TrashCan } from '@carbon/icons-react';
 import { NODE_TYPES, getField } from '../node-types.js';
 import { Choice, NumericField } from './Fields.jsx';
 
@@ -34,21 +34,20 @@ function NodeField({ node, field, store }) {
 
 export function NodeInspector({ snapshot, store, actions }) {
   const node = snapshot.template.nodes.find(n => n.id === snapshot.selected);
-  const fields = node ? NODE_TYPES[node.kind].fields.filter(field => !field.when || field.when(node)) : [];
-  const instances = snapshot.applied.zones.filter(zone => zone.nodeId === node?.id).map(({ id, owner, inputs }) => ({ id, owner, inputs }));
+  if (!node) return null;
+  const fields = NODE_TYPES[node.kind].fields.filter(field => !field.when || field.when(node));
+  const instances = snapshot.applied.zones.filter(zone => zone.nodeId === node.id).map(({ id, owner, inputs }) => ({ id, owner, inputs }));
   return <section className="node-inspector" aria-label="Настройки ноды">
     <div className="inspector-heading">
-      <h3>{node ? `${NODE_TYPES[node.kind].title}: ${node.name}` : 'Выберите ноду'}</h3>
-      {node && <div className="button-row">
+      <h3>{node.name}</h3>
+      <div className="button-row">
         <Button id="duplicateNode" kind="ghost" size="sm" hasIconOnly renderIcon={Copy} iconDescription="Копировать ноду" onClick={() => actions.duplicate(node.id)} />
         <Button id="deleteNode" kind="danger--ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription="Удалить ноду" onClick={() => actions.deleteNode(node.id)} />
-      </div>}
+        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Close} iconDescription="Закрыть параметры ноды" onClick={() => store.select(null)} />
+      </div>
     </div>
-    {node ? <>
-      <div id="nodeFields" className="node-fields">{fields.map(field => <NodeField key={`${node.id}:${field.path}`} node={node} field={field} store={store} />)}</div>
-      <Accordion size="sm">
-        <AccordionItem title={`Данные экземпляров (${instances.length})`}><pre>{JSON.stringify({ id: node.id, instances }, null, 2)}</pre></AccordionItem></Accordion>
-      <Button kind="ghost" size="sm" onClick={() => store.select(null)}>Снять выделение</Button>
-    </> : <p className="helper-text">Выберите область на планете или ноду в графе, чтобы изменить её параметры.</p>}
+    <div id="nodeFields" className="node-fields">{fields.map(field => <NodeField key={`${node.id}:${field.path}`} node={node} field={field} store={store} />)}</div>
+    <Accordion size="sm">
+      <AccordionItem title={`Данные экземпляров (${instances.length})`}><pre>{JSON.stringify({ id: node.id, instances }, null, 2)}</pre></AccordionItem></Accordion>
   </section>;
 }
