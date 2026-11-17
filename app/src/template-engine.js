@@ -1,3 +1,4 @@
+import { applyComposition } from './composition-engine.js';
 import { placeSide } from './sphere-layout.js';
 import { analyzeGraph } from './graph-model.js';
 import { validateNode, upgradeTemplate } from './node-types.js';
@@ -15,19 +16,26 @@ function random(seed) { let s = seed >>> 0; return () => { s += 0x6d2b79f5; let 
 export function validateTemplate(raw) {
   const t = upgradeTemplate(raw);
   if (!ident.test(t.id ?? '') || typeof t.name !== 'string' || !t.name.trim() || t.name.length > 100) throw new Error('Нужны id на латинице и название до 100 символов');
-  if (t.players?.min !== 2 || t.players?.max !== 2 || t.players?.default !== 2) throw new Error('Шаблон 1v1 рассчитан ровно на двух игроков');
+  if (t.version === 4 && (!Number.isInteger(t.players?.default) || t.players.default < 2 || t.players.default > 8)) throw new Error('Композиция рассчитана на 2–8 игроков');
+  if (t.version === 3 && (t.players?.min !== 2 || t.players?.max !== 2 || t.players?.default !== 2)) throw new Error('Шаблон 1v1 рассчитан ровно на двух игроков');
   if (!Array.isArray(t.nodes) || !t.nodes.length || t.nodes.length > 60 || !Array.isArray(t.links) || t.links.length > 200) throw new Error('Допустимо 1–60 нод и до 200 связей');
+  if (t.version === 4 && t.nodes.some(n => ['spawn','front'].includes(n.kind))) throw new Error('В композиции спавны выбираются после детализации; используйте вход композиции вместо спавна и удалите фронт');
+  if (t.version === 3 && t.nodes.some(n => !['spawn','metal','blocker','ramp','front'].includes(n.kind))) throw new Error('Фрагменты и выбор доступны в композициях версии 4');
   const ids = new Set();
   for (const n of t.nodes) {
     if (!ident.test(n?.id ?? '') || ids.has(n.id)) throw new Error('Нужны уникальные id нод на латинице');
     ids.add(n.id); validateNode(n);
   }
-  if (t.nodes.filter(n => n.kind === 'spawn').length !== 1) throw new Error('В шаблоне 1v1 должен быть ровно один спавн');
+  if (t.version === 3 && t.nodes.filter(n => n.kind === 'spawn').length !== 1) throw new Error('В шаблоне 1v1 должен быть ровно один спавн');
   analyzeGraph(t); return t;
 }
 
-export function applyTemplate(raw, { players = 2, seed, metalScale = 1, planetRadius = 500 }) {
+export function applyTemplate(raw, { players = 2, seed, metalScale = 1, planetRadius = 500, contact = 'balanced' }, base) {
   const template = validateTemplate(raw);
+  if (template.version === 4) {
+    if (!Number.isInteger(players) || players < 2 || players > 8 || !Number.isInteger(seed) || !finite(seed, 0, 4294967295) || !finite(metalScale, .25, 3) || !finite(planetRadius, 100, 1200) || !['early','balanced','late'].includes(contact)) throw new Error('Неверные параметры композиции');
+    return applyComposition(template, {players,seed,metalScale,planetRadius,contact}, base);
+  }
   if (players !== 2 || !Number.isInteger(seed) || !finite(seed, 0, 4294967295) || !finite(metalScale, .25, 3) || !finite(planetRadius, 100, 1200)) throw new Error('Неверные параметры шаблона 1v1');
   const graph = analyzeGraph(template), placed = placeSide(graph), zones = [], links = [], warnings = [];
   const rng = random(seed), z = rng()*2-1, a = rng()*Math.PI*2;

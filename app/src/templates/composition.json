@@ -1,0 +1,208 @@
+{
+  "version": 4,
+  "id": "composition",
+  "name": "Композиция: кольцо и фрагмент",
+  "description": "Циклическая композиция всей планеты. Фрагмент №1 раскрывается только по вызову; seed выбирает металл, рампу или выход. Спавны находятся после детализации.",
+  "players": {
+    "min": 2,
+    "max": 8,
+    "default": 2
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "kind": "composition",
+      "name": "Композиция",
+      "canvas": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "m0",
+      "kind": "metal",
+      "name": "Металл",
+      "canvas": {
+        "x": 360,
+        "y": 0
+      },
+      "size": 18,
+      "density": 12
+    },
+    {
+      "id": "m1",
+      "kind": "metal",
+      "name": "Металл",
+      "canvas": {
+        "x": 720,
+        "y": 0
+      },
+      "size": 18,
+      "density": 12
+    },
+    {
+      "id": "m2",
+      "kind": "metal",
+      "name": "Металл",
+      "canvas": {
+        "x": 1080,
+        "y": 0
+      },
+      "size": 18,
+      "density": 12
+    },
+    {
+      "id": "m3",
+      "kind": "metal",
+      "name": "Металл",
+      "canvas": {
+        "x": 1440,
+        "y": 0
+      },
+      "size": 18,
+      "density": 12
+    },
+    {
+      "id": "invoke",
+      "kind": "call",
+      "name": "Вызов фрагмента",
+      "canvas": {
+        "x": 720,
+        "y": 220
+      },
+      "fragment": 1,
+      "maxRepeats": 3
+    },
+    {
+      "id": "wall",
+      "kind": "blocker",
+      "name": "Блокер",
+      "canvas": {
+        "x": 1080,
+        "y": 260
+      },
+      "size": 25,
+      "shape": "strip"
+    },
+    {
+      "id": "f1",
+      "kind": "fragment",
+      "name": "Вход фрагмента",
+      "canvas": {
+        "x": 0,
+        "y": 650
+      },
+      "fragment": 1
+    },
+    {
+      "id": "pick",
+      "kind": "choice",
+      "name": "Выбор",
+      "canvas": {
+        "x": 360,
+        "y": 650
+      },
+      "maxVisits": 3
+    },
+    {
+      "id": "fm",
+      "kind": "metal",
+      "name": "Металл",
+      "canvas": {
+        "x": 720,
+        "y": 650
+      },
+      "size": 12,
+      "density": 7
+    },
+    {
+      "id": "fr",
+      "kind": "ramp",
+      "name": "Рампа",
+      "canvas": {
+        "x": 720,
+        "y": 900
+      },
+      "size": 18,
+      "orientation": 45
+    },
+    {
+      "id": "again",
+      "kind": "call",
+      "name": "Вызов фрагмента",
+      "canvas": {
+        "x": 1080,
+        "y": 650
+      },
+      "fragment": 1,
+      "maxRepeats": 3
+    },
+    {
+      "id": "out",
+      "kind": "exit",
+      "name": "Выход фрагмента",
+      "canvas": {
+        "x": 1440,
+        "y": 750
+      }
+    }
+  ],
+  "links": [
+    {
+      "to": "m0",
+      "from": "root"
+    },
+    {
+      "to": "m1",
+      "from": "m0"
+    },
+    {
+      "to": "invoke",
+      "from": "m1"
+    },
+    {
+      "to": "m2",
+      "from": "invoke"
+    },
+    {
+      "to": "m3",
+      "from": "m2"
+    },
+    {
+      "to": "m0",
+      "from": "m3"
+    },
+    {
+      "to": "wall",
+      "from": "m2"
+    },
+    {
+      "to": "pick",
+      "from": "f1"
+    },
+    {
+      "to": "fm",
+      "from": "pick"
+    },
+    {
+      "to": "fr",
+      "from": "pick"
+    },
+    {
+      "to": "out",
+      "from": "pick"
+    },
+    {
+      "to": "again",
+      "from": "fm"
+    },
+    {
+      "to": "again",
+      "from": "fr"
+    },
+    {
+      "to": "out",
+      "from": "again"
+    }
+  ]
+}

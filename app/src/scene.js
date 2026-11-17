@@ -289,16 +289,21 @@ export function createScene(host) {
     parts = {};
   }
 
-  async function show(p, { template = false } = {}) {
+  let showSerial = 0;
+  async function show(p, { template = false, preserveView = false } = {}) {
+    const serial = ++showSerial;
     const layers = await biomeArray(p.biomes);
     const brushMaps = await Promise.all(
       p.csg.brushes.map((b) =>
         b.op === "Add" && b.diffuse ? loadTexture(b.diffuse).then(brushTexture, () => null) : null,
       ),
     );
+    if (serial !== showSerial) {
+      layers.dispose(); brushMaps.forEach(map => map?.dispose()); return;
+    }
     clear();
     // Игра использует систему, где z направлена к полюсу; в three.js полюс: ось y.
-    group.rotation.set(-Math.PI / 2, 0, 0);
+    if (!preserveView) group.rotation.set(-Math.PI / 2, 0, 0);
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(p.positions.flat()), 3));
@@ -423,7 +428,7 @@ export function createScene(host) {
     planetRadius = p.radius;
     if (template) project = createSurfaceProjector(p);
     const dist = p.max_radius * 3.2 * Math.max(1, 1/camera.aspect);
-    camera.position.setLength(dist);
+    if (!preserveView) camera.position.setLength(dist);
     minDistance = p.max_radius * 1.05;
   }
 

@@ -1,5 +1,20 @@
-// Несколько входов объединяются в ориентированный граф без циклов.
+// Версия 3 хранит зависимости размещения; версия 4 допускает циклы графа карты.
 export function analyzeGraph(template) {
+  if (template.version === 4) {
+    const nodes = new Map(template.nodes.map(n => [n.id, n]));
+    const parents = new Map(template.nodes.map(n => [n.id, []])), children = new Map(template.nodes.map(n => [n.id, []]));
+    const seen = new Set();
+    for (const l of template.links) {
+      if (!nodes.has(l.from) || !nodes.has(l.to)) throw new Error('Связь ссылается на неизвестную ноду');
+      if (['composition','fragment'].includes(nodes.get(l.to).kind)) throw new Error('У входа композиции и фрагмента нет входного пина; используйте вызов фрагмента');
+      if (nodes.get(l.from).kind === 'exit') throw new Error('У выхода фрагмента нет выходного пина');
+      const key = l.from + ':' + l.to;
+      if (seen.has(key)) throw new Error('Эта связь уже существует');
+      if (l.weight !== undefined && (!Number.isFinite(l.weight) || l.weight < 0 || l.weight > 1000)) throw new Error('Вес выбора должен быть от 0 до 1000');
+      seen.add(key); parents.get(l.to).push(l.from); children.get(l.from).push(l.to);
+    }
+    return { order: template.nodes, parents, children, active: new Set(nodes.keys()), depths: new Map(template.nodes.map(n => [n.id, 0])) };
+  }
   const nodes = new Map(template.nodes.map(n => [n.id, n]));
   const parents = new Map(template.nodes.map(n => [n.id, []]));
   const children = new Map(template.nodes.map(n => [n.id, []]));
@@ -45,7 +60,7 @@ export function disconnectNodes(template, from, to) {
 }
 export function moveThroughLink(template, nodeId, canvas, edge) {
   const next = structuredClone(template), node = next.nodes.find(n => n.id === nodeId);
-  if (['spawn', 'front'].includes(node.kind)) throw new Error('Вставлять в связь и извлекать можно металл, блокер и рампу');
+  if (!['metal', 'blocker', 'ramp', 'call', 'choice'].includes(node.kind)) throw new Error('Вставлять в связь и извлекать можно металл, блокер, рампу, вызов и выбор');
   const parents = next.links.filter(l => l.to === nodeId).map(l => l.from);
   const children = next.links.filter(l => l.from === nodeId).map(l => l.to);
   next.links = next.links.filter(l => l.from !== nodeId && l.to !== nodeId);

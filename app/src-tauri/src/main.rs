@@ -37,7 +37,7 @@ fn generate(planet: Value, max_slope: Option<f32>, media: Option<String>) -> Pla
 
 /// Сухая основа для шаблона: без жидкостей, CSG и исходного металла.
 #[tauri::command(async)]
-fn generate_base(planet: Value, media: Option<String>) -> Result<Planet, String> {
+fn generate_base(planet: Value, media: Option<String>) -> Result<Value, String> {
     let media = media_of(media);
     let mut g = config::generator_object(&planet).clone();
     let radius = g.get("radius").and_then(Value::as_f64).unwrap_or(500.0);
@@ -56,7 +56,24 @@ fn generate_base(planet: Value, media: Option<String>) -> Result<Planet, String>
     result.metal.spots.clear();
     result.metal.candidates.clear();
     result.metal.limit_is_random = false;
-    Ok(result)
+    let raw_noise: Vec<f32> = result.positions.iter().map(|&p| {
+        planet_gen::surface::height_noise(&bp, planet_gen::math::scale(planet_gen::math::normalize(p), bp.radius))
+    }).collect();
+    let biome_noise: Vec<f32> = result.positions.iter().map(|&p| planet_gen::biomes::noise_at(&bp, p)).collect();
+    let temperature: Vec<f32> = result.positions.iter().map(|&p| {
+        let n = planet_gen::math::normalize(p);
+        let lat = 1.0 - (n[1]*0.001 + n[0]*0.001 + n[2]).abs();
+        ((lat+lat-1.0)+bp.temperature).clamp(-1.0,1.0)
+    }).collect();
+    let fields = serde_json::json!([
+        {"id":"heightNoise","label":"Шум высоты","values":raw_noise},
+        {"id":"biomeNoise","label":"Шум подбиомов","values":biome_noise},
+        {"id":"temperature","label":"Температура","values":temperature},
+        {"id":"normalizedHeight","label":"Нормированная высота основы","values":result.heights}
+    ]);
+    let mut value = serde_json::to_value(&result).map_err(|e| e.to_string())?;
+    value["generation_fields"] = fields;
+    Ok(value)
 }
 
 /// Изображение `.papa` по пути игры: 8 байт ширины и высоты (u32 LE), затем RGBA8.

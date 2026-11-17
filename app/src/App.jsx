@@ -9,6 +9,7 @@ import { BASE_SOURCE, asSystem, randomPlanet } from './model/planet.js';
 import { GeneratorFields, NumericField } from './components/Fields.jsx';
 import { TemplateControls } from './components/TemplateControls.jsx';
 import { GraphPanel } from './components/GraphPanel.jsx';
+import { FinalGraphPanel } from './components/FinalGraphPanel.jsx';
 import { ResultPanel } from './components/ResultPanel.jsx';
 
 const SURFACE_LAYERS = { textures: 'Текстуры', water: 'Вода и лава', csg: 'CSG', subtract: 'Вычитание', metal: 'Металл', candidates: 'Кандидаты металла', wire: 'Сетка поверхности' };
@@ -20,11 +21,14 @@ export default function App() {
   const host = useRef(), sceneRef = useRef(), busyRef = useRef(false), baseSource = useRef(structuredClone(BASE_SOURCE)), placements = useRef();
   const [sceneReady, setSceneReady] = useState(false), [systems, setSystems] = useState([]), [planetIndex, setPlanetIndex] = useState(0);
   const [mode, setMode] = useState('templates'), [randomSource, setRandomSource] = useState(null), [parameters, setParameters] = useState({});
+  const [finalOpen, setFinalOpen] = useState(false);
+  const shownSurface = useRef(null), shownBase = useRef(null), surfaceRender = useRef(Promise.resolve()), display = useRef();
   const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [slope, setSlope] = useState(40), [settingsOpen, setSettingsOpen] = useState(true);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [result, setResult] = useState(null), [base, setBase] = useState(null);
   const [notification, setNotification] = useState(null), [layersOpen, setLayersOpen] = useState(false), [layers, setLayers] = useState(INITIAL_LAYERS);
   const [appliedLayers, setAppliedLayers] = useState({ spawn: true, metal: true, blocker: true, ramp: true, front: true, links: true, debug: false, icons: true });
+  display.current = { layers, appliedLayers, selected: snapshot.selected };
   const tauri = !!window.__TAURI_INTERNALS__;
   const template = mode === 'templates';
   function notify(message, error = false) { setNotification({ message: String(message), error, key: Date.now() }); }
@@ -40,9 +44,23 @@ export default function App() {
   }, [layers, template, result]);
   useEffect(() => {
     if (!sceneReady) return;
-    placements.current = sceneRef.current.setApplied(template && base ? snapshot.applied : null, id => store.select(id));
-    sceneRef.current.toggleApplied(appliedLayers);
-    sceneRef.current.selectNode(snapshot.selected);
+    let active = true;
+    async function update() {
+      const surface = template && base ? snapshot.applied.surface ?? (snapshot.applied.debug.pending ? shownSurface.current ?? base.result : base.result) : null;
+      if (surface && shownSurface.current !== surface) {
+        shownSurface.current = surface;
+        surfaceRender.current = sceneRef.current.show(surface, { template: true, preserveView: shownBase.current === base.result });
+        shownBase.current = base.result;
+      }
+      await surfaceRender.current;
+      if (!active) return;
+      placements.current = sceneRef.current.setApplied(template && base ? snapshot.applied : null, id => store.select(id));
+      sceneRef.current.toggle({ ...display.current.layers, ...(template ? { water: false, csg: false, subtract: false, metal: false, candidates: false } : {}) });
+      sceneRef.current.toggleApplied(display.current.appliedLayers);
+      sceneRef.current.selectNode(display.current.selected);
+    }
+    update().catch(error => notify(error.message, true));
+    return () => { active = false; };
   }, [sceneReady, snapshot.applied, base, template, store]);
   useEffect(() => { sceneRef.current?.toggleApplied(appliedLayers); }, [appliedLayers]);
   useEffect(() => { sceneRef.current?.selectNode(snapshot.selected); }, [snapshot.selected]);
@@ -65,8 +83,8 @@ export default function App() {
       setStatus('Загрузка текстур');
       let nextBase = null;
       if (nextMode === 'templates') { nextBase = cleanBasePlanet(planet, numeric); planet = nextBase.result; }
-      await sceneRef.current.show(planet, { template: nextMode === 'templates' });
-      if (nextBase) { baseSource.current = { ...BASE_SOURCE, planet: numeric }; setBase(nextBase); store.parameters({ planetRadius: Number(numeric.radius) }); }
+      if (nextMode !== 'templates') await sceneRef.current.show(planet);
+      if (nextBase) { baseSource.current = { ...BASE_SOURCE, planet: numeric }; setBase(nextBase); store.surface(nextBase.result); }
       setResult({ planet, name: source.name ?? 'Планета', ms, system: nextMode === 'templates' ? 'Основа шаблона' : nextMode === 'random' ? 'Случайная планета' : systemName });
     } catch (error) { notify(String(error), true); }
     finally { busyRef.current = false; setBusy(false); setStatus(''); }
@@ -116,10 +134,12 @@ export default function App() {
             {Object.entries(SURFACE_LAYERS).filter(([key]) => !template || ['textures', 'wire'].includes(key)).map(([key, label]) => <Checkbox id={`surface-${key}`} key={key} labelText={label} checked={layers[key]} onChange={(_, { checked }) => setLayers({ ...layers, [key]: checked })} />)}
           </section>}
         </div>
+        {template && <div className="final-graph-toggle"><Button size="sm" kind="secondary" onClick={() => setFinalOpen(v => !v)} aria-expanded={finalOpen}>Конечный граф</Button></div>}
+        {template && finalOpen && <FinalGraphPanel applied={snapshot.applied} onClose={() => setFinalOpen(false)} onSelect={id => store.select(id)} />}
         <div ref={host} id="view" />
         {!result && !busy && <div className="viewport-empty"><h3>Планета появится здесь</h3></div>}
         {!tauri && <div className="runtime-notice"><InlineNotification kind="info" title="Режим просмотра интерфейса" subtitle="Для генерации запустите приложение через npm run tauri -- dev." hideCloseButton lowContrast /></div>}
-        {busy && <div className="generation-status" role="status"><InlineLoading description={status} /></div>}
+        {(busy || snapshot.applied.debug.pending) && <div className="generation-status" role="status"><InlineLoading description={busy ? status : 'Рельеф, навигация и спавны'} /></div>}
       </section>
       <ResultPanel result={result} hidden={template} />
       <GraphPanel collapsed={graphCollapsed} onCollapse={() => setGraphCollapsed(value => !value)} snapshot={snapshot} store={store} notify={notify} hidden={!template} />

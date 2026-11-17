@@ -1,3 +1,4 @@
+import { createAnalysisLayer } from './analysis-layer.js';
 import * as THREE from "three";
 import { area, point, band, label, disposeObject } from "./primitives.js";
 import { KINDS } from "./template-engine.js";
@@ -6,7 +7,8 @@ import { iconTexture } from "./icons.js";
 export function createTemplateLayer(project, data, radius) {
   const root = new THREE.Group(), zones = new THREE.Group(), links = new THREE.Group(), debug = new THREE.Group();
   const guide = new THREE.Group();
-  root.add(guide, links, zones, debug);
+  const analysis = createAnalysisLayer(project, data, radius);
+  root.add(guide, links, zones, debug, analysis.root);
   if (data.guide) {
     guide.add(band(project, data.guide.from, data.guide.middle, .008, '#f4f4f4', .8));
     guide.add(band(project, data.guide.middle, data.guide.to, .008, '#f4f4f4', .8));
@@ -61,6 +63,7 @@ export function createTemplateLayer(project, data, radius) {
     }
   }
   function toggle(o) {
+    analysis.toggle(o);
     guide.visible = o.front !== false;
     for (const g of zones.children) g.visible = o[g.userData.kind] !== false;
     zones.traverse((object) => { if (object.userData.isIcon) object.visible = o.icons !== false; });
@@ -75,7 +78,7 @@ export function createTemplateLayer(project, data, radius) {
     if (z.kind === "spawn") placements.spawns.push(common);
     if (z.kind === "front") placements.fronts.push(common);
     if (z.kind === "metal") placements.metal.push({ ...common, spots: z.points.map(position) });
-    if (z.kind === "blocker" || z.kind === "ramp") placements.regions.push({ ...common, kind: z.kind, shape: z.shape ?? "ellipse", orientation: z.orientation ?? 0, basis: z.basis, representation: "reserved-area" });
+    if (z.kind === "blocker" || z.kind === "ramp") placements.regions.push({ ...common, kind: z.kind, shape: z.shape ?? "ellipse", orientation: z.orientation ?? 0, basis: z.basis, representation: data.surface ? "surface-deformation" : "reserved-area" });
   }
   return { root, zones, placements, select, toggle, dispose: () => disposeObject(root) };
 }

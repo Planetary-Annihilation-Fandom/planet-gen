@@ -173,20 +173,16 @@ fn cross_d(a: D3, b: D3) -> D3 {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
+/// Исходное шумовое поле до поправок рельефа и воды.
+pub fn height_noise(bp: &PlanetBp, p: V3) -> f32 {
+    simplex_scaled(bp.height_octaves, bp.height_persistence, bp.height_scale_rule,
+        -1.0, 1.0, p[0], p[1], p[2], bp.height_seed)
+}
+
 pub fn gen_height(bp: &PlanetBp, s: &mut Surfel) {
     let [px, py, pz] = s.pos;
     let range = bp.height_range;
-    let mut h = simplex_scaled(
-        bp.height_octaves,
-        bp.height_persistence,
-        bp.height_scale_rule,
-        -1.0,
-        1.0,
-        px,
-        py,
-        pz,
-        bp.height_seed,
-    ) * range;
+    let mut h = height_noise(bp, [px, py, pz]) * range;
     for adj in &bp.height_adjustments {
         let dz = pz - adj.pos[2];
         let dx = px - adj.pos[0];
@@ -196,7 +192,7 @@ pub fn gen_height(bp: &PlanetBp, s: &mut Surfel) {
             h = (d / adj.radius) * (h - adj.adjustment) + adj.adjustment;
         }
     }
-    let h0 = h / range;
+    let h0 = if range.abs() > f32::EPSILON { h / range } else { 0.0 };
     let mut h = h0;
     let wh = bp.water_height;
     if h0 <= wh {
