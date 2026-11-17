@@ -7,7 +7,7 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::bsp::{cross3, dot3, len3, split_field, sub3, Bsp, Poly, Vtx, D3, NA};
 use crate::config::read_json;
@@ -60,9 +60,11 @@ pub struct Placement {
     pub procedural: bool,
 }
 
-/// Читает массив `planetCSG` системы.
+/// Переводит сохранённый `planetCSG` в последовательность операций над объёмами.
+/// Матрица уже содержит высоту, масштаб и поворот; поля редактора повторно не применяются.
+/// Порядок записей сохраняется: добавление после вычитания может вернуть удалённый объём.
 pub fn placements_from_json(csg: &[Value]) -> Vec<Placement> {
-    csg.iter()
+    let mut placements: Vec<Placement> = csg.iter()
         .filter_map(|c| {
             let spec = c.get("spec")?.as_str()?.to_string();
             let op = match c.get("op")?.as_str()? {
@@ -70,15 +72,23 @@ pub fn placements_from_json(csg: &[Value]) -> Vec<Placement> {
                 "BO_Add" => Op::Add,
                 _ => return None,
             };
-            let m = c.get("transform")?.as_array().filter(|a| a.len() == 12)?;
+            let m = c.get("transform")?.as_array().filter(|a| a.len() == 12 || a.len() == 16)?;
             let mut transform = [0f32; 12];
-            for (i, v) in m.iter().enumerate() {
+            for (i, v) in m.iter().take(12).enumerate() {
                 transform[i] = v.as_f64().unwrap_or(0.0) as f32;
             }
-            let proj = c.get("proj").and_then(Value::as_str).unwrap_or("BP_Bend").to_string();
+            // У 4×4 последняя строка не участвует в affine transform.
+            let proj = c.get("proj").and_then(Value::as_str).unwrap_or("BP_Terrain").to_string();
             Some(Placement { spec, op, transform, proj, procedural: false })
         })
-        .collect()
+        .collect();
+    // Последняя операция над тем же объёмом полностью заменяет предыдущие.
+    // Иначе совпадающие грани проходят BSP дважды и мерцают в просмотрщике.
+    let mut seen = HashSet::new();
+    placements.reverse();
+    placements.retain(|p| seen.insert((p.spec.clone(), p.proj.clone(), p.transform.map(f32::to_bits))));
+    placements.reverse();
+    placements
 }
 
 /// Матрица 3×4 по строкам: `world = R · local + t`.
@@ -90,24 +100,63 @@ fn apply(m: &[f32; 12], v: V3) -> V3 {
     ]
 }
 
+/// Отрицательный определитель означает отражение. Оно меняет обход граней,
+/// поэтому при сборке замкнутого объёма нужно развернуть треугольники.
 fn det3(m: &[f32; 12]) -> f32 {
     m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) + m[2] * (m[4] * m[9] - m[5] * m[8])
 }
 
-/// Проекции `Csg::updateGeometry`. `origin` — точка установки кисти, `w` — вершина в мировых
-/// координатах, `sample` — радиус поверхности по направлению.
-fn project(proj: &str, origin: V3, w: V3, sample: &dyn Fn(V3) -> f32, h0: f32) -> V3 {
+/// Деформирует установленную вершину по правилам `Csg::updateGeometry`.
+/// `w` уже прошла meshToModel и матрицу экземпляра, а `local_z` взят между этими этапами.
+/// `sample` читает радиус исходного терраина; `h0` — тот же радиус под центром `origin`.
+/// Их разность переносит местный перепад рельефа на кисть, сохраняя высоту её центра.
+fn project(proj: &str, origin: V3, local_z: f32, w: V3, sample: &dyn Fn(V3) -> f32, h0: f32) -> V3 {
     let up = normalize(origin);
     let along = dot(w, up);
     let dir = normalize(w);
     match proj {
         "BP_None" => w,
+        // Условие проверяется до transform, по исходной геометрии кисти.
+        "BP_Terrain_BelowZero" if local_z > 0.0 => w,
         // Вершина остаётся на своём луче, высота берётся по оси кисти.
         "BP_Arch" => scale(dir, along),
         // Высота над осью кисти плюс разница рельефа под вершиной и под центром.
         "BP_Terrain" | "BP_Terrain_BelowZero" => scale(dir, along + sample(dir) - h0),
-        // BP_Bend; долготные проекции пока сводятся к нему.
-        _ => {
+        "BP_Longitude" | "BP_LongitudePinch" => {
+            // На оси кисти долготное направление не определено. Движок использует
+            // Terrain в пределах 0.0001 радиана, чтобы не делить малые смещения.
+            if dot(up, dir).clamp(-1.0, 1.0).acos() <= 1e-4 {
+                return scale(dir, along + sample(dir) - h0);
+            }
+            let radius = length(origin);
+            let latitude = up[2].clamp(-1.0, 1.0).asin();
+            let longitude = up[1].atan2(up[0]);
+            let (sin_lon, cos_lon) = longitude.sin_cos();
+            let (sin_lat, cos_lat) = latitude.sin_cos();
+            // На точном полюсе fromAxisAngle получает нулевую ось: матрица единичная.
+            let north = if up[0] == 0.0 && up[1] == 0.0 {
+                [0.0, 0.0, 1.0]
+            } else {
+                [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat]
+            };
+            let east = crate::math::cross(north, up);
+            let tangent = sub(w, scale(up, along));
+            // Смещения в касательной плоскости превращаются в углы сферы.
+            // У Longitude параллели сужаются к полюсам; Pinch сохраняет делитель radius.
+            let lat = latitude + dot(tangent, north) / radius;
+            let parallel = if proj == "BP_Longitude" { radius * lat.cos() } else { radius };
+            let lon = longitude + dot(tangent, east) / parallel;
+            let (sin_lat, cos_lat) = lat.sin_cos();
+            let (sin_lon, cos_lon) = lon.sin_cos();
+            let d = [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat];
+            let mut p = scale(d, along.abs());
+            // В Longitude движок добавляет поправку рельефа только к мировым X/Y.
+            let shift = sample(d) - h0;
+            p[0] += d[0] * shift;
+            p[1] += d[1] * shift;
+            p
+        }
+        "BP_Bend" => {
             let t = sub(w, scale(up, along));
             let tl = length(t);
             let r0 = length(origin);
@@ -121,13 +170,16 @@ fn project(proj: &str, origin: V3, w: V3, sample: &dyn Fn(V3) -> f32, h0: f32) -
                     up[1] * a.cos() + t[1] / tl * a.sin(),
                     up[2] * a.cos() + t[2] / tl * a.sin(),
                 ];
-                scale(n, along)
+                scale(n, along.abs())
             };
-            // Рельеф измеряется под исходным направлением вершины, сдвиг — вдоль нового.
+            // В Bend рельеф выбирается под исходным лучом, а поправка идёт вдоль нового.
+            // Выбор sample(normalize(bent)) здесь изменил бы посадку на неровной поверхности.
             let shift = sample(dir) - h0;
             let nd = normalize(bent);
             [bent[0] + nd[0] * shift, bent[1] + nd[1] * shift, bent[2] + nd[2] * shift]
         }
+        // parseBrushProjection: неизвестные значения означают Terrain.
+        _ => scale(dir, along + sample(dir) - h0),
     }
 }
 
@@ -149,17 +201,24 @@ struct Source {
     materials: Vec<Option<String>>,
 }
 
-/// Читает меши кистей и устанавливает их на сферу.
+/// Загружает геометрию кистей и готовит замкнутые объёмы для булевых операций.
+/// Порядок преобразований совпадает с игрой: вершина → meshToModel → transform → проекция.
+/// Установка ещё не удаляет скрытые грани: пересечения обрабатывает `boolean`.
 pub fn install(media: &Media, list: &[Placement], sample: &dyn Fn(V3) -> f32) -> (Vec<Installed>, Vec<(String, String)>) {
     let mut cache: HashMap<String, Result<Source, String>> = HashMap::new();
     let mut out = Vec::new();
     let mut skipped = Vec::new();
     for pl in list {
+        // Один файл может использоваться десятками экземпляров. Кэшируем исходные
+        // ресурсы и ошибки чтения; положение каждой кисти рассчитывается отдельно.
         let entry = cache.entry(pl.spec.clone()).or_insert_with(|| {
             let papa_path = read_json(media, &pl.spec)
                 .and_then(|v| v.get("papa").and_then(Value::as_str).map(str::to_string))
                 .ok_or_else(|| "нет поля papa".to_string())?;
             let papa = Papa::parse(&media.read(&papa_path)?)?;
+            if papa.mesh_bindings.is_empty() {
+                return Err("в papa нет мешей, привязанных к моделям".into());
+            }
             let materials = (0..papa.materials.len())
                 .map(|m| papa.material_texture(m, "DiffuseTexture").map(str::to_string))
                 .collect();
@@ -175,15 +234,20 @@ pub fn install(media: &Media, list: &[Placement], sample: &dyn Fn(V3) -> f32) ->
         let tr = &pl.transform;
         let origin = [tr[3], tr[7], tr[11]];
         let h0 = sample(normalize(origin));
-        let flip = det3(tr) < 0.0;
         let mut polys = Vec::new();
-        for mesh in &src.papa.meshes {
+        // Привязки определяют состав модели: один меш может встречаться несколько раз,
+        // а меш без привязки вообще не должен появляться на планете.
+        for binding in &src.papa.mesh_bindings {
+            let mesh = &src.papa.meshes[binding.mesh];
+            let flip = det3(tr) * det3(&binding.transform) < 0.0;
             let verts: Vec<Vtx> = mesh
                 .positions
                 .iter()
                 .zip(&mesh.uvs)
                 .map(|(p, uv)| {
-                    let w = project(&pl.proj, origin, apply(tr, *p), sample, h0);
+                    // Локальный Z в BelowZero тоже берётся после meshToModel.
+                    let local = apply(&binding.transform, *p);
+                    let w = project(&pl.proj, origin, local[2], apply(tr, local), sample, h0);
                     let mut a = [0f32; NA];
                     a[0] = uv[0];
                     a[1] = uv[1];
@@ -242,8 +306,10 @@ pub struct SurfaceMesh {
     pub tris: Vec<[u32; 3]>,
 }
 
-/// Принадлежность точки итоговому телу. `inside` — номера кистей, внутри которых лежит точка,
-/// `own` — кисть, чью грань рассматриваем, и сторона грани.
+/// Проверяет, заполнена ли точка после всех операций. Сначала учитывается планета,
+/// затем кисти в порядке массива: попавшая в точку Add заполняет её, Subtract опустошает.
+/// `inside` содержит номера охватывающих кистей. `own` задаёт сторону рассматриваемой
+/// грани, чтобы сравнить заполненность по обе стороны без смещения координат точки.
 fn member(ops: &[Op], in_planet: bool, inside: &[u32], own: Option<(u32, bool)>) -> bool {
     let mut list: Vec<(u32, bool)> = inside.iter().map(|&j| (j, true)).collect();
     if let Some(o) = own {
@@ -259,10 +325,14 @@ fn member(ops: &[Op], in_planet: bool, inside: &[u32], own: Option<(u32, bool)>)
     s
 }
 
+/// Быстро исключает кисть, если её коробка не касается фрагмента.
+/// Малый запас оставляет пограничные случаи точной классификации BSP.
 fn overlaps(lo: D3, hi: D3, b: &Installed) -> bool {
     (0..3).all(|k| lo[k] <= b.hi[k] + 1e-3 && hi[k] >= b.lo[k] - 1e-3)
 }
 
+/// Коробка исходного фрагмента ограничивает круг проверяемых кистей.
+/// Все полученные при разрезании части остаются внутри этой коробки.
 fn bounds(p: &Poly) -> (D3, D3) {
     let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
     for v in &p.v {
@@ -274,8 +344,10 @@ fn bounds(p: &Poly) -> (D3, D3) {
     (lo, hi)
 }
 
-/// Делит треугольник кисти по поверхности планеты. Крупные треугольники у поверхности
-/// сначала дробятся до размера ячейки, чтобы линейная интерполяция высоты была точной.
+/// Разделяет грань кисти на части под терраином и над ним по знаку `field`.
+/// Крупные треугольники около поверхности сначала дробятся: линейное приближение
+/// радиальной высоты на маленьких частях точнее передаёт стык с рельефом.
+/// Это наше приближение пересечения, а не копия нативного BSP игры.
 fn split_by_surface(p: Poly, field: &dyn Fn(D3) -> f64, cell: f64, inside: &mut Vec<Poly>, outside: &mut Vec<Poly>) {
     let mut stack: Vec<(Poly, u32)> = Vec::new();
     for i in 1..p.v.len() - 1 {
@@ -285,6 +357,8 @@ fn split_by_surface(p: Poly, field: &dyn Fn(D3) -> f64, cell: f64, inside: &mut 
         let vals: Vec<f64> = t.v.iter().map(|v| field(v.p)).collect();
         let edge = (0..3).map(|i| len3(crate::bsp::sub3(t.v[i].p, t.v[(i + 1) % 3].p))).fold(0.0, f64::max);
         let (fmin, fmax) = vals.iter().fold((f64::MAX, f64::MIN), |(a, b), &v| (a.min(v), b.max(v)));
+        // Дробление нужно только вблизи поверхности. Ограничение глубины сдерживает
+        // число частей у больших кистей; вдали от терраина остаётся целый треугольник.
         if edge > cell && depth < 8 && fmin < edge && fmax > -edge {
             let m = |i: usize, j: usize| t.v[i].lerp(&t.v[j], 0.5);
             let (m01, m12, m20) = (m(0, 1), m(1, 2), m(2, 0));
@@ -331,8 +405,9 @@ fn par_map<T: Sync, R: Send>(items: &[T], grain: usize, f: impl Fn(usize, &T) ->
     parts.into_iter().flat_map(|p| p.1).collect()
 }
 
-/// Делит куски на части внутри и снаружи кисти `j`; номер кисти дописывается в список
-/// кистей, внутри которых лежит кусок.
+/// Уточняет фрагменты после пересечения с кистью `j`, сохраняя прежние признаки `extra`.
+/// Каждый новый кусок получает список охватывающих его кистей; этот список затем
+/// позволяет вычислить итоговый объём с учётом порядка Add и Subtract.
 fn classify_all<T: Copy>(bsp: &Bsp, j: u32, frags: Vec<(Poly, T, Vec<u32>)>) -> Vec<(Poly, T, Vec<u32>)> {
     let mut next = Vec::with_capacity(frags.len());
     let mut parts = Vec::new();
@@ -350,12 +425,16 @@ fn classify_all<T: Copy>(bsp: &Bsp, j: u32, frags: Vec<(Poly, T, Vec<u32>)>) -> 
     next
 }
 
+/// Отбирает пары кистей для разрезания. Пересечение коробок лишь разрешает
+/// дальнейшую проверку BSP и само по себе не доказывает пересечение геометрии.
 fn boxes_overlap(a: &Installed, b: &Installed) -> bool {
     (0..3).all(|k| a.lo[k] <= b.hi[k] && a.hi[k] >= b.lo[k])
 }
 
-/// Булевы операции кистей с поверхностью. `field(p)` — расстояние точки над поверхностью
-/// по радиусу (отрицательное под ней), `cell` — размер ячейки поверхности.
+/// Собирает границу итогового тела отдельно из граней терраина и граней кистей.
+/// После разрезания фрагмент видим только там, где одна его сторона заполнена,
+/// а другая пуста. Так удаляются скрытые части и сохраняются стенки вычитания.
+/// `field(p)` — радиальная высота над исходным терраином, `cell` — размер его ячейки.
 pub fn boolean(
     surface: &SurfaceMesh,
     brushes: &[Installed],
@@ -394,6 +473,8 @@ pub fn boolean(
         }
         let mut kept = Vec::new();
         for (mut p, (), inside) in frags {
+            // Одинаковая заполненность с двух сторон означает внутреннюю или внешнюю
+            // грань без границы тела. Рисовать её не нужно.
             let f_in = member(&ops, true, &inside, None);
             if f_in == member(&ops, false, &inside, None) {
                 continue;
@@ -427,7 +508,8 @@ pub fn boolean(
     }
 
     eprintln!("TIME planet {:?}", t0.elapsed());
-    // Кисти: части, лежащие на границе итогового тела.
+    // Грани кистей проходят ту же проверку, но их положение относительно планеты
+    // сначала определяет field. У выреза сохранённая нормаль должна смотреть внутрь полости.
     let out = par_map(brushes, 1, |bi, b| {
         let near: Vec<usize> = (0..brushes.len()).filter(|&j| j != bi && boxes_overlap(b, &brushes[j])).collect();
         let mut kept: Vec<Poly> = Vec::new();
@@ -458,6 +540,9 @@ pub fn boolean(
     (SurfaceMesh { verts, tris }, out)
 }
 
+/// Превращает оставшиеся многоугольники в треугольники для просмотра и экспорта.
+/// Группировка по исходному материалу сохраняет связь новых частей с текстурами;
+/// UV в точках разреза уже интерполированы при создании этих частей.
 fn to_mesh(b: &Installed, mut kept: Vec<Poly>) -> BrushMesh {
     kept.sort_by_key(|p| p.tag);
     let mut m = BrushMesh {

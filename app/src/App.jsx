@@ -7,7 +7,7 @@ import { createScene } from './scene.js';
 import { cleanBasePlanet } from './template-engine.js';
 import { createTemplateStore } from './model/template-store.js';
 import { BASE_SOURCE, asSystem, randomPlanet } from './model/planet.js';
-import { GeneratorFields, NumericField } from './components/Fields.jsx';
+import { Choice, GeneratorFields, NumericField } from './components/Fields.jsx';
 import { TemplateControls } from './components/TemplateControls.jsx';
 import { GraphPanel } from './components/GraphPanel.jsx';
 import { FinalGraphPanel } from './components/FinalGraphPanel.jsx';
@@ -21,6 +21,7 @@ export default function App() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const host = useRef(), sceneRef = useRef(), busyRef = useRef(false), baseSource = useRef(structuredClone(BASE_SOURCE)), placements = useRef();
   const [sceneReady, setSceneReady] = useState(false), [systems, setSystems] = useState([]), [planetIndex, setPlanetIndex] = useState(0);
+  const [systemIndex, setSystemIndex] = useState(0);
   const [mode, setMode] = useState('templates'), [randomSource, setRandomSource] = useState(null), [parameters, setParameters] = useState({});
   const [finalOpen, setFinalOpen] = useState(false);
   const shownSurface = useRef(null), surfaceRender = useRef(Promise.resolve()), display = useRef();
@@ -65,7 +66,7 @@ export default function App() {
   useEffect(() => { sceneRef.current?.toggleApplied(appliedLayers); }, [appliedLayers]);
   useEffect(() => { sceneRef.current?.selectNode(snapshot.selected); }, [snapshot.selected]);
 
-  async function generate(nextMode, source, values, systemName = systems[0]?.name ?? '') {
+  async function generate(nextMode, source, values, systemName = systems[systemIndex]?.name ?? '') {
     if (!source || busyRef.current) return;
     if (!tauri) { notify('Для генерации откройте приложение planet-gen.', true); return; }
     if (!sceneRef.current) return;
@@ -98,9 +99,9 @@ export default function App() {
         if (args.path) { const doc = await invoke('read_system', { path: args.path }); list = [{ ...asSystem(doc, args.path), __file: true }, ...list]; }
         if (!active) return;
         setSystems(list);
-        const index = args.path ? args.planet ?? 0 : 0;
+        const index = Math.min(args.planet ?? 0, Math.max(0, (list[0]?.planets?.length ?? 1) - 1));
         setPlanetIndex(index);
-        const nextMode = args.templates ? 'templates' : args.random ? 'random' : args.path ? 'existing' : 'templates';
+        const nextMode = args.templates ? 'templates' : args.random ? 'random' : args.path || args.viewer ? 'existing' : 'templates';
         const source = nextMode === 'templates' ? baseSource.current : nextMode === 'random' ? randomPlanet(args.random) : list[0]?.planets?.[index];
         if (nextMode === 'random') setRandomSource(source);
         setMode(nextMode); setParameters({ ...source?.planet });
@@ -109,7 +110,12 @@ export default function App() {
     return () => { active = false; };
   }, [sceneReady]);
 
-  const source = template ? baseSource.current : mode === 'random' ? randomSource : systems[0]?.planets?.[planetIndex];
+  const source = template ? baseSource.current : mode === 'random' ? randomSource : systems[systemIndex]?.planets?.[planetIndex];
+  function selectPlanet(system, planet) {
+    const source = systems[system]?.planets?.[planet];
+    setSystemIndex(system); setPlanetIndex(planet); setParameters({ ...source?.planet });
+    generate('existing', source, source?.planet ?? {}, systems[system]?.name ?? '');
+  }
   return <Theme theme="g90" className="app-theme">
     <Content id="main-content" tabIndex={-1} className={`workspace${template ? ' template-mode' : ''}${settingsOpen ? ' settings-visible' : ''}${graphCollapsed ? ' graph-collapsed' : ''}`}>
       <aside id="panel" className="settings-panel" hidden={!settingsOpen} aria-label="Параметры генерации">
@@ -117,6 +123,10 @@ export default function App() {
           <Button kind="ghost" size="sm" hasIconOnly renderIcon={Close} iconDescription="Скрыть параметры" onClick={() => setSettingsOpen(false)} />
         </div>
         {template && <Layer className="source-form"><TemplateControls store={store} snapshot={snapshot} notify={notify} base={base} placements={placements} disabled={busy} /></Layer>}
+        {mode === 'existing' && <div className="source-form">
+          <Choice id="viewer-system" label="Система" value={systemIndex} disabled={busy} options={systems.map((system, i) => [i, system.name ?? `Система ${i + 1}`])} onChange={value => selectPlanet(Number(value), 0)} />
+          <Choice id="viewer-planet" label="Планета" value={planetIndex} disabled={busy} options={(systems[systemIndex]?.planets ?? []).map((planet, i) => [i, planet.name ?? `Планета ${i + 1}`])} onChange={value => selectPlanet(systemIndex, Number(value))} />
+        </div>}
         <Accordion className="generator-accordion" size="sm">
           <AccordionItem title={template ? 'Параметры основы' : 'Параметры генератора'} open>
           <GeneratorFields parameters={parameters} onChange={setParameters} template={template} disabled={busy} />

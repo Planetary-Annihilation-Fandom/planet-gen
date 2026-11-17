@@ -89,13 +89,14 @@ fn texture(path: String, media: Option<String>) -> Result<tauri::ipc::Response, 
 }
 
 /// Файл системы и номер планеты из командной строки:
-/// `planet-gen-app <система.pas> [--planet N]` или `planet-gen-app --random <архетип>`.
+/// `planet-gen-app --viewer`, `<система.pas> [--planet N]` или `--random <архетип>`.
 #[tauri::command]
 fn startup_args() -> Value {
     let mut path = None;
     let mut planet = 0u64;
     let mut random: Option<String> = None;
     let mut templates = false;
+    let mut viewer = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--planet" {
@@ -104,11 +105,13 @@ fn startup_args() -> Value {
             random = args.next();
         } else if a == "--templates" {
             templates = true;
+        } else if a == "--viewer" {
+            viewer = true;
         } else if !a.starts_with('-') && path.is_none() {
             path = Some(a);
         }
     }
-    serde_json::json!({ "path": path, "planet": planet, "random": random, "templates": templates })
+    serde_json::json!({ "path": path, "planet": planet, "random": random, "templates": templates, "viewer": viewer })
 }
 
 fn main() {

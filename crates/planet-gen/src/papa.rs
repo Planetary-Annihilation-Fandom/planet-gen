@@ -1,5 +1,7 @@
 //! Чтение файлов `.papa`: текстуры и статические меши, которых хватает для кистей CSG и биомов.
 //!
+//! Файл хранит таблицы ресурсов и отдельные привязки мешей к моделям. Для кистей важны
+//! обе части: сырые вершины без `meshToModel` могут оказаться в неверном месте.
 //! Раскладка заголовков взята из `tools/media/blender/io_scene_papa_windows/papafile.py`.
 
 use std::path::Path;
@@ -59,20 +61,35 @@ pub struct Mesh {
     pub groups: Vec<Group>,
 }
 
+/// Используемый моделью меш и его локальная матрица (3×4 по строкам).
+/// `modelToScene` задаёт раскладку исходной сцены и при загрузке кисти не применяется.
+#[derive(Clone, Debug)]
+pub struct MeshBinding {
+    pub mesh: usize,
+    pub transform: [f32; 12],
+}
+
 #[derive(Debug, Default)]
 pub struct Papa {
     pub strings: Vec<String>,
     pub textures: Vec<Texture>,
     pub materials: Vec<Material>,
     pub meshes: Vec<Mesh>,
+    pub mesh_bindings: Vec<MeshBinding>,
 }
 
 impl Papa {
+    /// Читает самостоятельный файл с диска. Для игровых путей `/pa/...` вызывающий
+    /// код получает байты через Media и передаёт их в `parse`, сохраняя приоритет монтирования.
     pub fn read(path: &Path) -> Result<Papa, String> {
         let b = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Papa::parse(&b).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// Читает таблицы PAPA по смещениям из заголовка и связывает их по индексам.
+    /// Меши остаются в исходных координатах; `mesh_bindings` описывает, какие из них
+    /// используются моделями и как перевести вершины в локальные координаты кисти.
+    /// Ошибки смещений и неподдерживаемых форматов возвращаются вызывающему коду.
     pub fn parse(b: &[u8]) -> Result<Papa, String> {
         if b.len() < 104 || u32_at(b, 0) != 0x5061_7061 {
             return Err("не файл papa".into());
@@ -194,7 +211,36 @@ impl Papa {
             }
             meshes.push(mesh);
         }
-        Ok(Papa { strings, textures, materials, meshes })
+        // papa2Manifold проходит модели и их bindings, а не всю таблицу мешей.
+        // Привязки сохраняем по порядку: несколько моделей могут использовать один меш.
+        let mut mesh_bindings = Vec::new();
+        let n_models = count(9);
+        let o_models = offset(7);
+        for i in 0..n_models {
+            let h = check(o_models, (i + 1) * 80)? + i * 80;
+            let n_bindings = u16_at(b, h + 4) as usize;
+            if n_bindings == 0 {
+                continue;
+            }
+            let at = check(i64_at(b, h + 72), n_bindings * 80)?;
+            for k in 0..n_bindings {
+                let binding = at + k * 80;
+                let mesh = u16_at(b, binding + 2) as usize;
+                if mesh >= meshes.len() {
+                    return Err(format!("binding ссылается на отсутствующий меш {mesh}"));
+                }
+                let mut transform = [0.0; 12];
+                // Матрица PAPA записана по столбцам; код установки кисти принимает строки.
+                // Например, перенос из элементов 12/13/14 попадает в 3/7/11.
+                for row in 0..3 {
+                    for col in 0..4 {
+                        transform[row * 4 + col] = f32_at(b, binding + 8 + (col * 4 + row) * 4);
+                    }
+                }
+                mesh_bindings.push(MeshBinding { mesh, transform });
+            }
+        }
+        Ok(Papa { strings, textures, materials, meshes, mesh_bindings })
     }
 
     /// Первое изображение файла; для ссылки читает целевой файл от `media`.

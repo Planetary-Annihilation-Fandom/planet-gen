@@ -357,23 +357,22 @@ export function createScene(host) {
       g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(b.positions.flat()), 3));
       g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(b.uvs.flat()), 2));
       g.setIndex(b.indices);
-      if (b.op === "Add") {
-        g.computeVertexNormals();
-        const map = brushMaps[i];
-        add.add(
-          new THREE.Mesh(
-            g,
-            new THREE.MeshStandardMaterial({ map, color: map ? "#ffffff" : "#9a8f80", roughness: 0.95, side: THREE.DoubleSide }),
-          ),
-        );
-      } else {
+      // Результат вычитания тоже содержит видимые грани: стенки и дно выреза.
+      g.computeVertexNormals();
+      const map = brushMaps[i];
+      add.add(
+        new THREE.Mesh(
+          g,
+          new THREE.MeshStandardMaterial({ map, color: map ? "#ffffff" : "#9a8f80", roughness: 0.95, side: THREE.DoubleSide }),
+        ),
+      );
+      if (b.op === "Subtract") {
         subtract.add(
           new THREE.LineSegments(
             new THREE.WireframeGeometry(g),
             new THREE.LineBasicMaterial({ color: "#da1e28", transparent: true, opacity: 0.6 }),
           ),
         );
-        g.dispose();
       }
     });
     group.add(add, subtract);

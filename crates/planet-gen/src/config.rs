@@ -100,6 +100,9 @@ pub fn generator_object(v: &Value) -> &Value {
 }
 
 impl PlanetBp {
+    /// Переводит настройки редактора в единицы генератора. Например, heightRange=50
+    /// даёт внутренний диапазон 80, а normalizedAdjustment=0.3 задаёт высоту 24.
+    /// Корректировки сохраняются в порядке JSON: каждая изменяет результат предыдущей.
     pub fn from_generator(g: &Value, archetype: Archetype) -> Self {
         let pct = 100.0f64;
         let radius = num(g, "radius", 1000.0) as f32;
@@ -116,9 +119,9 @@ impl PlanetBp {
             .map(|a| {
                 a.iter()
                     .filter_map(|h| {
-                        // HeightAdjustment::parse: normalizedAdjustment в [-1, 1]
-                        // имеет приоритет над adjustment; неположительный радиус
-                        // исключает запись. Перевод выполняется после приведения к f32.
+                        // Правила HeightAdjustment::parse из игры: нормированная цель
+                        // в [-1, 1] заменяет абсолютную, а неположительный радиус исключает запись.
+                        // Сначала приводим числа к f32, чтобы проверять границы как движок.
                         let radius = num(h, "radius", 0.0) as f32;
                         if radius <= 0.0 {
                             return None;
