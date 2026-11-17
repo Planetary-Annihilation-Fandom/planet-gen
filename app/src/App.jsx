@@ -13,9 +13,20 @@ import { GraphPanel } from './components/GraphPanel.jsx';
 import { FinalGraphPanel } from './components/FinalGraphPanel.jsx';
 import { ResultPanel } from './components/ResultPanel.jsx';
 
-const SURFACE_LAYERS = { textures: 'Текстуры', water: 'Вода и лава', csg: 'CSG', subtract: 'Вычитание', metal: 'Металл', candidates: 'Кандидаты металла', wire: 'Сетка поверхности' };
-const INITIAL_LAYERS = { textures: true, water: true, csg: true, subtract: false, metal: true, candidates: false, wire: false };
+const SURFACE_LAYERS = {
+  textures: 'Текстуры', water: 'Вода и лава', csg: 'CSG', csgWire: 'Каркас CSG',
+  subtract: 'Вычитание', metal: 'Металл', candidates: 'Кандидаты металла',
+  wire: 'Сетка поверхности', paNavigation: 'Воксели навигации PA',
+};
+const INITIAL_LAYERS = {
+  textures: true, water: true, csg: true, csgWire: false,
+  subtract: false, metal: true, candidates: false, wire: false, paNavigation: false,
+};
+const TEMPLATE_SURFACE_LAYERS = {
+  water: false, csg: false, csgWire: false, subtract: false, metal: false, candidates: false, paNavigation: false,
+};
 
+/** Связывает режимы генерации и независимые настройки слоёв просмотрщика. */
 export default function App() {
   const [store] = useState(() => createTemplateStore());
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -36,13 +47,16 @@ export default function App() {
   function notify(message, error = false) { setNotification({ message: String(message), error, key: Date.now() }); }
 
   useEffect(() => {
-    try { sceneRef.current = createScene(host.current); setSceneReady(true); }
+    try {
+      sceneRef.current = createScene(host.current, error => notify(`Не удалось показать воксели навигации. ${error}`, true));
+      setSceneReady(true);
+    }
     catch (error) { notify(`Не удалось открыть 3D-просмотр: ${error.message}`, true); }
     return () => sceneRef.current?.dispose();
   }, []);
   useEffect(() => { if (snapshot.loadError) notify(snapshot.loadError, true); }, [snapshot.loadError]);
   useEffect(() => {
-    sceneRef.current?.toggle({ ...layers, ...(template ? { water: false, csg: false, subtract: false, metal: false, candidates: false } : {}) });
+    sceneRef.current?.toggle(template ? { ...layers, ...TEMPLATE_SURFACE_LAYERS } : layers);
   }, [layers, template, result]);
   useEffect(() => {
     if (!sceneReady) return;
@@ -56,7 +70,8 @@ export default function App() {
       await surfaceRender.current;
       if (!active) return;
       placements.current = sceneRef.current.setApplied(template && base ? snapshot.applied : null, id => store.select(id));
-      sceneRef.current.toggle({ ...display.current.layers, ...(template ? { water: false, csg: false, subtract: false, metal: false, candidates: false } : {}) });
+      const currentLayers = display.current.layers;
+      sceneRef.current.toggle(template ? { ...currentLayers, ...TEMPLATE_SURFACE_LAYERS } : currentLayers);
       sceneRef.current.toggleApplied(display.current.appliedLayers);
       sceneRef.current.selectNode(display.current.selected);
     }
@@ -143,6 +158,7 @@ export default function App() {
           {/* Слои доступны над планетой и не зависят от видимости панели генерации. */}
           {layersOpen && <section className="surface-layers" aria-label="Слои планеты"><h3>Поверхность</h3>
             {Object.entries(SURFACE_LAYERS).filter(([key]) => !template || ['textures', 'wire'].includes(key)).map(([key, label]) => <Checkbox id={`surface-${key}`} key={key} labelText={label} checked={layers[key]} onChange={(_, { checked }) => setLayers({ ...layers, [key]: checked })} />)}
+            {!template && layers.paNavigation && <p className="helper-text">Рельеф для амфибий. Зелёный — поверхность для движения, красный — преграда.</p>}
             {template && <DisplayControls snapshot={snapshot} layers={appliedLayers} setLayers={setAppliedLayers} />}
           </section>}
         </div>

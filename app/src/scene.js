@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { invoke } from "@tauri-apps/api/core";
 import { createSurfaceProjector } from "./primitives.js";
 import { createTemplateLayer } from "./template-layer.js";
+import { createNavigationVoxels } from "./navigation-voxels.js";
 
 const LAYER = 512; // сторона слоя массива текстур
 const MAX_BIOMES = 8; // два атрибута vec4 весов
@@ -193,8 +194,8 @@ function weightAttributes(geo, p) {
   geo.setAttribute("weights1", new THREE.BufferAttribute(w1, 4));
 }
 
-/** Управляет WebGL-просмотром; геометрия обновляется при генерации, кадры рисуются только после изменений. */
-export function createScene(host) {
+/** Показывает планету и отладочные слои. Новый кадр рисуется только после изменений сцены. */
+export function createScene(host, onNavigationError) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   host.append(renderer.domElement);
@@ -305,6 +306,7 @@ export function createScene(host) {
   }
 
   let showSerial = 0;
+  /** Заменяет геометрию планеты и запоминает идентификатор для отложенного расчёта вокселей. */
   async function show(p, { template = false, preserveView = false } = {}) {
     const serial = ++showSerial;
     const layers = await biomeArray(p.biomes);
@@ -351,6 +353,8 @@ export function createScene(host) {
     group.add(wire);
 
     const add = new THREE.Group();
+    const csgWire = new THREE.Group();
+    csgWire.visible = false;
     const subtract = new THREE.Group();
     p.csg.brushes.forEach((b, i) => {
       const g = new THREE.BufferGeometry();
@@ -366,6 +370,12 @@ export function createScene(host) {
           new THREE.MeshStandardMaterial({ map, color: map ? "#ffffff" : "#9a8f80", roughness: 0.95, side: THREE.DoubleSide }),
         ),
       );
+      csgWire.add(
+        new THREE.LineSegments(
+          new THREE.WireframeGeometry(g),
+          new THREE.LineBasicMaterial({ color: "#52d6ff", transparent: true, opacity: 0.9, depthWrite: false }),
+        ),
+      );
       if (b.op === "Subtract") {
         subtract.add(
           new THREE.LineSegments(
@@ -375,7 +385,7 @@ export function createScene(host) {
         );
       }
     });
-    group.add(add, subtract);
+    group.add(add, csgWire, subtract);
 
     const fluids = new THREE.Group();
     if (p.water_radius) {
@@ -438,7 +448,10 @@ export function createScene(host) {
     );
     group.add(cand);
 
-    parts = { surfaceMat, surface, wire, fluids, metal, cand, add, subtract };
+    const navigation = new THREE.Group();
+    navigation.visible = false;
+    group.add(navigation);
+    parts = { surfaceMat, surface, wire, fluids, metal, cand, add, csgWire, subtract, navigation, navRevision: p.nav_revision };
     planetRadius = p.radius;
     if (template) project = createSurfaceProjector(p);
     const dist = p.max_radius * 3.2 * Math.max(1, 1/camera.aspect);
@@ -447,6 +460,22 @@ export function createScene(host) {
     invalidate();
   }
 
+  /** Загружает воксели один раз на планету и пропускает ответ для закрытой сцены. */
+  async function loadNavigation(target) {
+    target.navigationLoading = true;
+    try {
+      const bytes = await invoke("navigation_voxels", { navRevision: target.navRevision });
+      if (target !== parts) return;
+      target.navigation.add(createNavigationVoxels(bytes));
+      invalidate();
+    } catch (error) {
+      if (target === parts && target.navigation.visible) onNavigationError(error);
+    } finally {
+      target.navigationLoading = false;
+    }
+  }
+
+  /** Меняет видимость слоёв и запускает расчёт вокселей при первом показе. */
   function toggle(o) {
     if (!parts.wire) return;
     parts.surfaceMat.uniforms.uTextured.value = o.textures;
@@ -455,7 +484,13 @@ export function createScene(host) {
     parts.metal.visible = o.metal;
     parts.cand.visible = o.candidates;
     parts.add.visible = o.csg;
+    parts.csgWire.visible = o.csgWire;
     parts.subtract.visible = o.subtract;
+    const wasVisible = parts.navigation.visible;
+    parts.navigation.visible = o.paNavigation;
+    if (!wasVisible && o.paNavigation && parts.navRevision && !parts.navigationLoading && !parts.navigation.children.length) {
+      void loadNavigation(parts);
+    }
     invalidate();
   }
 

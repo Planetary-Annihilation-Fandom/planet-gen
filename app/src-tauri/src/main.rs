@@ -2,7 +2,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use planet_gen::{config, generate_from_json, Media, MetalOptions, Planet};
+use serde::Serialize;
 use serde_json::Value;
+use std::sync::{Arc, Mutex};
+use tauri::{ipc::Response, State};
+
+#[derive(Clone, Serialize)]
+struct ViewerPlanet {
+    nav_revision: u64,
+    #[serde(flatten)]
+    planet: Arc<Planet>,
+}
+
+#[derive(Default)]
+struct ViewerState(Mutex<Option<ViewerPlanet>>);
 
 fn read_json(path: &std::path::Path) -> Result<Value, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -25,14 +38,38 @@ fn read_system(path: String) -> Result<Value, String> {
     read_json(std::path::Path::new(&path))
 }
 
+/// Сохраняет геометрию открытой планеты, чтобы рассчитать воксели по запросу без повторной генерации.
 #[tauri::command(async)]
-fn generate(planet: Value, max_slope: Option<f32>, media: Option<String>) -> Planet {
+fn generate(
+    planet: Value,
+    max_slope: Option<f32>,
+    media: Option<String>,
+    state: State<'_, ViewerState>,
+) -> Result<ViewerPlanet, String> {
     let media = media_of(media);
     let mut opts = MetalOptions::default();
     if let Some(s) = max_slope {
         opts.max_slope_deg = s;
     }
-    generate_from_json(&planet, &media, opts)
+    let planet = Arc::new(generate_from_json(&planet, &media, opts));
+    let mut current = state.0.lock().map_err(|e| e.to_string())?;
+    let nav_revision = current.as_ref().map_or(1, |previous| previous.nav_revision + 1);
+    let result = ViewerPlanet { planet, nav_revision };
+    *current = Some(result.clone());
+    Ok(result)
+}
+
+/// Возвращает воксели открытой планеты. Проверка версии защищает от запроса для предыдущей карты.
+#[tauri::command]
+async fn navigation_voxels(nav_revision: u64, state: State<'_, ViewerState>) -> Result<Response, String> {
+    let planet = state.0.lock().map_err(|e| e.to_string())?
+        .as_ref()
+        .filter(|current| current.nav_revision == nav_revision)
+        .map(|current| Arc::clone(&current.planet))
+        .ok_or_else(|| "Планета в просмотрщике уже сменилась".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || Response::new(planet_gen::nav_voxels::amphibious_cells(&planet)))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Сухая основа для шаблона: без жидкостей, CSG и исходного металла.
@@ -114,9 +151,11 @@ fn startup_args() -> Value {
     serde_json::json!({ "path": path, "planet": planet, "random": random, "templates": templates, "viewer": viewer })
 }
 
+/// Запускает окно и подключает команды, которыми пользуется просмотрщик.
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![default_systems, read_system, generate, generate_base, texture, startup_args])
+        .manage(ViewerState::default())
+        .invoke_handler(tauri::generate_handler![default_systems, read_system, generate, navigation_voxels, generate_base, texture, startup_args])
         .run(tauri::generate_context!())
         .expect("запуск окна planet-gen");
 }
