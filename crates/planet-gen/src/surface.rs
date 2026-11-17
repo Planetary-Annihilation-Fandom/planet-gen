@@ -183,6 +183,8 @@ pub fn gen_height(bp: &PlanetBp, s: &mut Surfel) {
     let [px, py, pz] = s.pos;
     let range = bp.height_range;
     let mut h = height_noise(bp, [px, py, pz]) * range;
+    // genHeight: расстояние по хорде исходной сферы. Области применяются
+    // последовательно, каждая смешивает текущую высоту со своей целевой.
     for adj in &bp.height_adjustments {
         let dz = pz - adj.pos[2];
         let dx = px - adj.pos[0];

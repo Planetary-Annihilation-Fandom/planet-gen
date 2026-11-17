@@ -32,7 +32,7 @@ export function applyComposition(template, parameters, base) {
     },
   };
   if (!base) return result;
-  const { surface, mesh, routes } = realizeComposition(base, zones, links),
+  const { mesh, routes } = realizeComposition(base, zones, links),
     selection = evaluateSpawns(mesh, zones, parameters);
   const bins = new Map(),
     cell = (d) => d.map((v) => Math.floor((v + 1) * 12));
@@ -74,7 +74,6 @@ export function applyComposition(template, parameters, base) {
     );
     fieldLabels[id] = `Доля подбиома: ${base.biomes[b].name}`;
   }
-  result.surface = surface;
   result.zones = [...zones, ...selection.spawns];
   result.routes = routes;
   result.analysis = {

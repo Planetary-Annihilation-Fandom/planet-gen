@@ -22,7 +22,7 @@ export function createTemplateLayer(project, data, radius) {
     g.userData = { nodeId: z.nodeId, zoneId: z.id, kind: z.kind };
     const color = KINDS[z.kind];
     const aspect = z.shape === 'strip' ? .25 : z.kind === 'ramp' ? .55 : 1;
-    g.add(area(project, z.direction, z.radius, color, { basis: z.basis, aspect, height: z.kind === 'ramp' ? radius*z.radius*.2 : 0, slope: z.kind === 'ramp' }));
+    g.add(area(project, z.direction, z.radius, color, { basis: z.basis, aspect }));
     if (z.kind === 'ramp') {
       const d = new THREE.Vector3(...z.direction), f = new THREE.Vector3(...z.basis.forward), r = new THREE.Vector3(...z.basis.right);
       const offset = (x, y = 0) => d.clone().multiplyScalar(Math.cos(Math.hypot(x, y))).add(f.clone().multiplyScalar(x)).add(r.clone().multiplyScalar(y)).normalize().toArray();
@@ -79,7 +79,7 @@ export function createTemplateLayer(project, data, radius) {
     if (z.kind === "spawn") placements.spawns.push(common);
     if (z.kind === "front") placements.fronts.push(common);
     if (z.kind === "metal") placements.metal.push({ ...common, spots: z.points.map(position) });
-    if (z.kind === "blocker" || z.kind === "ramp") placements.regions.push({ ...common, kind: z.kind, shape: z.shape ?? "ellipse", orientation: z.orientation ?? 0, basis: z.basis, representation: data.surface ? "surface-deformation" : "reserved-area" });
+    if (z.kind === "blocker" || z.kind === "ramp") placements.regions.push({ ...common, kind: z.kind, shape: z.shape ?? "ellipse", orientation: z.orientation ?? 0, basis: z.basis, representation: "reserved-area" });
   }
   return { root, zones, placements, select, toggle, dispose: () => disposeObject(root) };
 }

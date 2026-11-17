@@ -65,10 +65,7 @@ export function evaluateSpawns(
   const n = mesh.directions.length,
     r = planetRadius;
   const fields = {
-    baseHeight: mesh.baseHeights,
-    deformation: mesh.heights.map((h, i) => h - mesh.baseHeights[i]),
     height: mesh.heights,
-    slope: mesh.slopes,
     walkable: mesh.walkable.map((v) => +v),
     buildable: [],
     clearance: mesh.directions.map((direction) =>
@@ -83,12 +80,7 @@ export function evaluateSpawns(
     for (let j = 0; j < n; j++)
       if (angle(mesh.directions[i], mesh.directions[j]) < 0.12) local.push(j);
     fields.buildable[i] = mesh.walkable[i]
-      ? local.filter(
-          (j) =>
-            mesh.walkable[j] &&
-            mesh.slopes[j] < 15 &&
-            Math.abs(mesh.heights[j] - mesh.heights[i]) < r * 0.018,
-        ).length / Math.max(1, local.length)
+      ? local.filter((j) => mesh.walkable[j]).length / Math.max(1, local.length)
       : 0;
     for (const [key, range] of [
       ["wealthShort", 0.4],

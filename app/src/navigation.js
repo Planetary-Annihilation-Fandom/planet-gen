@@ -1,9 +1,9 @@
 /**
- * Реализует проходы и оценивает навигацию по детализированной поверхности.
+ * Рассчитывает маршруты между областями композиции на исходной поверхности.
  * Сферическая расчётная сетка хранит соседство, высоты и неизменные стоимости рёбер; поиски путей используют уже рассчитанные значения.
  */
 import * as THREE from "three";
-import { angle, norm, dot, offset } from "./generation-math.js";
+import { angle, norm, dot } from "./generation-math.js";
 import { createSurfaceProjector } from "./primitives.js";
 import { zoneDistance } from "./composition-layout.js";
 
@@ -107,147 +107,27 @@ const pathTo = (previous, start, end) => {
   return p.reverse();
 };
 
-/** Изменяет поверхность областями, прокладывает требуемые проходы и пересчитывает навигацию после деформации. */
+/** Строит расчётные маршруты на исходной основе. Блокеры пока представлены резервами шаблона. */
 export function realizeComposition(base, zones, links) {
   const mesh = makeNavigationMesh(),
     project = createSurfaceProjector(base),
-    radius = base.radius;
-  const heights = mesh.directions.map((d) =>
-    project(new THREE.Vector3(...d), 0).length(),
-  );
-  const blockers = zones.filter((z) => z.kind === "blocker"),
-    ramps = zones.filter((z) => z.kind === "ramp");
-  const inside = (d) => blockers.some((z) => zoneDistance(d, z) < 1.05);
-  const byId = new Map(zones.map((z) => [z.id, z])),
-    corridors = [],
+    blockers = zones.filter((zone) => zone.kind === "blocker"),
+    byId = new Map(zones.map((zone) => [zone.id, zone])),
     routes = [];
-  // Для требуемых связей сначала ищем обход, при необходимости прорезаем коридор.
-  for (const l of links) {
-    const a = byId.get(l.from),
-      b = byId.get(l.to);
-    const start = nearest(
-        mesh,
-        a.direction,
-        (i) => !inside(mesh.directions[i]),
-      ),
-      end = nearest(mesh, b.direction, (i) => !inside(mesh.directions[i]));
-    const result = shortestPaths(
-      mesh,
-      start,
-      (i, j) =>
-        angle(mesh.directions[i], mesh.directions[j]) *
-        radius *
-        (inside(mesh.directions[j])
-          ? 30
-          : 1 + Math.abs(heights[i] - heights[j]) / 8),
-    );
-    const path = pathTo(result.previous, start, end);
-    const points = path.map((i, k) => ({
-      direction: mesh.directions[i],
-      height:
-        heights[start] +
-        ((heights[end] - heights[start]) * k) / Math.max(1, path.length - 1),
-    }));
-    corridors.push(...points);
-    routes.push({
-      ...l,
-      fromNode: a.nodeId,
-      toNode: b.nodeId,
-      points: points.map((p) => p.direction),
-    });
-  }
-  const width = 0.065;
-  function sample(d, h) {
-    let change = 0;
-    for (const z of blockers) {
-      const r = zoneDistance(d, z);
-      if (r < 1.15) {
-        const profile = Math.max(0, Math.min(1, (1.15 - r) / 0.15));
-        change = Math.max(change, radius * 0.11 * profile);
-      }
-    }
-    for (const z of ramps) {
-      const r = zoneDistance(d, z);
-      if (r < 1) {
-        const along = dot(d, z.basis.forward) / Math.sin(z.radius);
-        const target = radius * 0.045 * (along + 1);
-        change += target * Math.min(1, (1 - r) * 5);
-      }
-    }
-    let nearestPoint = null,
-      best = width;
-    for (const p of corridors) {
-      const a = angle(d, p.direction);
-      if (a < best) {
-        best = a;
-        nearestPoint = p;
-      }
-    }
-    if (nearestPoint) {
-      const blend = Math.min(1, (width - best) / 0.025);
-      return (h + change) * (1 - blend) + nearestPoint.height * blend;
-    }
-    return h + change;
-  }
-  const positions = base.positions.map((p) => {
-    const d = norm(p),
-      h = sample(d, Math.hypot(...p));
-    return d.map((v) => v * h);
-  });
-  const surface = { ...base, positions, min_radius: Infinity, max_radius: 0 };
-  for (const p of positions) {
-    const r = Math.hypot(...p);
-    surface.min_radius = Math.min(surface.min_radius, r);
-    surface.max_radius = Math.max(surface.max_radius, r);
-  }
-  // Оценки берутся с детализированной поверхности, а не с исходной сферы.
-  const detailedProject = createSurfaceProjector(surface);
-  mesh.baseHeights = heights;
-  mesh.heights = mesh.directions.map((d) =>
-    detailedProject(new THREE.Vector3(...d), 0).length(),
+  const inside = (direction) =>
+    blockers.some((zone) => zoneDistance(direction, zone) < 1.05);
+  mesh.heights = mesh.directions.map((direction) =>
+    project(new THREE.Vector3(...direction), 0).length(),
   );
-  mesh.slopes = mesh.directions.map((d, i) =>
-    Math.max(
-      ...mesh.neighbors[i].map(
-        (j) =>
-          (Math.atan2(
-            Math.abs(mesh.heights[i] - mesh.heights[j]),
-            angle(d, mesh.directions[j]) * radius,
-          ) *
-            180) /
-          Math.PI,
-      ),
-    ),
-  );
-  mesh.walkable = mesh.directions.map(
-    (d, i) =>
-      mesh.slopes[i] <= 38 &&
-      (!inside(d) || corridors.some((p) => angle(d, p.direction) < 0.045)),
-  );
-  // Стоимость ребра не меняется между поисками путей по готовой карте.
-  // Вычисляем геометрию один раз, чтобы каждый кандидат старта не повторял
-  // проверки уклона и пересечения коридоров на всех посещённых рёбрах.
+  mesh.walkable = mesh.directions.map((direction) => !inside(direction));
   const edgeCosts = mesh.neighbors.map(() => new Map());
   const calculateEdgeCost = (i, j) => {
     if (!mesh.walkable[i] || !mesh.walkable[j]) return Infinity;
-    const distance = angle(mesh.directions[i], mesh.directions[j]) * radius;
-    if (
-      Math.abs(mesh.heights[i] - mesh.heights[j]) / distance >
-      Math.tan((38 * Math.PI) / 180)
-    )
-      return Infinity;
     const middle = norm(
       mesh.directions[i].map((v, k) => v + mesh.directions[j][k]),
     );
-    if (
-      inside(middle) &&
-      !corridors.some((p) => angle(middle, p.direction) < 0.045)
-    )
-      return Infinity;
-    return (
-      distance *
-      (1 + Math.abs(mesh.heights[i] - mesh.heights[j]) / Math.max(1, distance))
-    );
+    if (inside(middle)) return Infinity;
+    return angle(mesh.directions[i], mesh.directions[j]) * base.radius;
   };
   for (let vertex = 0; vertex < mesh.neighbors.length; vertex++) {
     for (const neighbor of mesh.neighbors[vertex]) {
@@ -258,7 +138,7 @@ export function realizeComposition(base, zones, links) {
     }
   }
   mesh.edgeCost = (from, to) => edgeCosts[from].get(to) ?? Infinity;
-  for (const route of routes) {
+  for (const route of links) {
     const a = byId.get(route.from),
       b = byId.get(route.to),
       start = nearest(mesh, a.direction, (i) => mesh.walkable[i]),
@@ -271,8 +151,13 @@ export function realizeComposition(base, zones, links) {
       throw new Error(
         `Не удалось реализовать проход ${a.name} — ${b.name}. Смените seed или уменьшите блокеры`,
       );
-    route.points = path.map((i) => mesh.directions[i]);
-    route.cost = found.distances[end];
+    routes.push({
+      ...route,
+      fromNode: a.nodeId,
+      toNode: b.nodeId,
+      points: path.map((i) => mesh.directions[i]),
+      cost: found.distances[end],
+    });
   }
   // Металл переносится на ближайшие допустимые участки своей области.
   for (const z of zones.filter((z) => z.kind === "metal")) {
@@ -291,6 +176,6 @@ export function realizeComposition(base, zones, links) {
       })
       .filter((d, i, a) => a.indexOf(d) === i);
   }
-  return { surface, mesh, routes };
+  return { mesh, routes };
 }
 export { pathTo };

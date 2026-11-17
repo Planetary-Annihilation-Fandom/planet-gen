@@ -23,7 +23,7 @@ export default function App() {
   const [sceneReady, setSceneReady] = useState(false), [systems, setSystems] = useState([]), [planetIndex, setPlanetIndex] = useState(0);
   const [mode, setMode] = useState('templates'), [randomSource, setRandomSource] = useState(null), [parameters, setParameters] = useState({});
   const [finalOpen, setFinalOpen] = useState(false);
-  const shownSurface = useRef(null), shownBase = useRef(null), surfaceRender = useRef(Promise.resolve()), display = useRef();
+  const shownSurface = useRef(null), surfaceRender = useRef(Promise.resolve()), display = useRef();
   const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [slope, setSlope] = useState(40), [settingsOpen, setSettingsOpen] = useState(true);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [result, setResult] = useState(null), [base, setBase] = useState(null);
@@ -47,11 +47,10 @@ export default function App() {
     if (!sceneReady) return;
     let active = true;
     async function update() {
-      const surface = template && base ? snapshot.applied.surface ?? (snapshot.applied.debug.pending ? shownSurface.current ?? base.result : base.result) : null;
+      const surface = template ? base?.result : null;
       if (surface && shownSurface.current !== surface) {
         shownSurface.current = surface;
-        surfaceRender.current = sceneRef.current.show(surface, { template: true, preserveView: shownBase.current === base.result });
-        shownBase.current = base.result;
+        surfaceRender.current = sceneRef.current.show(surface, { template: true });
       }
       await surfaceRender.current;
       if (!active) return;
