@@ -1,5 +1,7 @@
 // Разделитель сохраняет ширину панели между запусками и доступен с клавиатуры.
 export function setupGraphPanel(panel, handle) {
+  const controller = new AbortController();
+  const { signal } = controller;
   const key = "planet-gen.graph-width.v1";
   let start = null;
   function bounds() {
@@ -18,24 +20,25 @@ export function setupGraphPanel(panel, handle) {
     if (e.button !== 0) return;
     e.preventDefault(); start = { x: e.clientX, width: panel.getBoundingClientRect().width };
     handle.setPointerCapture(e.pointerId); document.body.classList.add("resizing-graph");
-  });
-  handle.addEventListener("pointermove", (e) => { if (start) resize(start.width+start.x-e.clientX, false); });
+  }, { signal });
+  handle.addEventListener("pointermove", (e) => { if (start) resize(start.width+start.x-e.clientX, false); }, { signal });
   const finish = () => {
     if (start) resize(panel.getBoundingClientRect().width);
     start = null; document.body.classList.remove("resizing-graph");
   };
-  handle.addEventListener("pointerup", finish); handle.addEventListener("pointercancel", finish);
-  handle.addEventListener("lostpointercapture", finish);
+  handle.addEventListener("pointerup", finish, { signal }); handle.addEventListener("pointercancel", finish, { signal });
+  handle.addEventListener("lostpointercapture", finish, { signal });
   handle.addEventListener("keydown", (e) => {
     const current = panel.getBoundingClientRect().width, { min, max } = bounds();
     const widths = { ArrowLeft: current+32, ArrowRight: current-32, Home: min, End: max };
     if (Object.hasOwn(widths, e.key)) { e.preventDefault(); resize(widths[e.key]); }
-  });
+  }, { signal });
   handle.addEventListener("dblclick", () => {
     document.body.style.removeProperty("--graph-width");
     try { localStorage.removeItem(key); } catch { /* Сброс текущего окна всё равно выполнен. */ }
-  });
+  }, { signal });
   window.addEventListener("resize", () => {
     if (!panel.hidden && document.body.style.getPropertyValue("--graph-width")) resize(parseFloat(document.body.style.getPropertyValue("--graph-width")), false);
-  });
+  }, { signal });
+  return () => { controller.abort(); document.body.classList.remove("resizing-graph"); };
 }

@@ -20,7 +20,6 @@ function path(a, b) {
 export function createTemplateGraph(host, onSelect, actions = {}) {
   const root = svg("svg", { role: "group", "aria-label": "Граф шаблона. Соединяйте выходы и входы нод. Правая кнопка удаляет связь" });
   host.replaceChildren(root);
-  const menu = document.createElement("div"); menu.className = "node-menu"; menu.hidden = true; host.append(menu);
   let data, layout, selected = null, view = { x: 0, y: 0, w: 460, h: 640 }, drag = null, wire = null, preview = null, autoFit = true, previousSize, suppressClick = false;
   const update = () => root.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
   const point = (e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(root.getScreenCTM().inverse());
@@ -91,39 +90,8 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
     const node = e.target.closest("[data-node]");
     const canvas = point(e);
     if (node) onSelect(node.dataset.node);
-    const r = host.getBoundingClientRect();
-    menu.replaceChildren();
-    const command = (title, action, key, disabled = false) => {
-      const button = document.createElement("button"); button.textContent = title; button.dataset.action = key; button.disabled = disabled;
-      button.onclick = () => { menu.hidden = true; action?.(); }; menu.append(button);
-    };
-    const heading = document.createElement("div"); heading.className = "node-menu-title";
-    heading.textContent = node ? "Создать дочернюю ноду" : "Создать ноду"; menu.append(heading);
-    for (const [kind, type] of Object.entries(NODE_TYPES)) {
-      const button = document.createElement("button"); button.append(iconSVG(kind), type.title);
-      button.dataset.kind = kind;
-      button.onclick = () => { menu.hidden = true; actions.create?.(kind, node ? undefined : { x: canvas.x, y: canvas.y }, node?.dataset.node); };
-      menu.append(button);
-    }
-    if (node) {
-      menu.append(document.createElement("hr"));
-      command("Копировать ноду", () => actions.duplicate?.(node.dataset.node), "duplicate");
-      command("Удалить ноду", () => actions.deleteNode?.(node.dataset.node), "delete");
-    }
-    menu.append(document.createElement("hr"));
-    const history = actions.history?.();
-    command("Отменить", actions.undo, "undo", !history?.past.length);
-    command("Повторить", actions.redo, "redo", !history?.future.length);
-    menu.append(document.createElement("hr"));
-    command("Разложить граф", actions.arrange, "arrange");
-    command("Вписать граф", fit, "fit");
-    menu.style.maxHeight = `${Math.max(100, r.height-12)}px`;
-    menu.hidden = false;
-    menu.style.left = `${Math.max(0, Math.min(e.clientX-r.left, r.width-menu.offsetWidth))}px`;
-    menu.style.top = `${Math.max(0, Math.min(e.clientY-r.top, r.height-menu.offsetHeight))}px`;
+    actions.contextMenu?.({ x: e.clientX, y: e.clientY, nodeId: node?.dataset.node ?? null, canvas });
   });
-  document.addEventListener("pointerdown", (e) => { if (!menu.contains(e.target)) menu.hidden = true; });
-  root.addEventListener("keydown", (e) => { if (e.key === "Escape") menu.hidden = true; });
   function fit() {
     if (!layout) return;
     autoFit = true;
@@ -131,7 +99,7 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
     const w = Math.max(layout.width, layout.height*aspect), h = w/aspect;
     view = { x: layout.x+(layout.width-w)/2, y: layout.y+(layout.height-h)/2, w, h }; update();
   }
-  new ResizeObserver(() => {
+  const observer = new ResizeObserver(() => {
     const r = host.getBoundingClientRect(); if (!r.width || !r.height) return;
     if (autoFit) fit();
     else if (previousSize) {
@@ -139,7 +107,8 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
       view.x += (view.w-w)/2; view.y += (view.h-h)/2; view.w = w; view.h = h; update();
     }
     previousSize = r;
-  }).observe(host);
+  });
+  observer.observe(host);
   function select(id) {
     selected = id;
     for (const g of root.querySelectorAll("[data-node]")) g.classList.toggle("selected", g.dataset.node === id);
@@ -147,7 +116,6 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
   }
   function show(next) {
     cancel();
-    menu.hidden = true;
     const changed = data?.template.id !== next.template.id;
     data = next; layout = layoutGraph(data.template); root.replaceChildren();
     for (const l of data.template.links) {
@@ -164,7 +132,7 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
     for (const n of layout.order) {
       const instances = data.zones.filter((z) => z.nodeId === n.id), p = layout.positions.get(n.id);
       const g = svg("g", { transform: `translate(${p.x} ${p.y})`, "data-node": n.id, tabindex: 0, role: "button", class: instances.length ? "" : "inactive", "aria-label": `${n.name}: ${instances.length} экземпляров` });
-      g.append(svg("rect", { width: WIDTH, height: HEIGHT, rx: 6, class: "graph-node" }));
+      g.append(svg("rect", { width: WIDTH, height: HEIGHT, rx: 0, class: "graph-node" }));
       g.append(svg("rect", { width: 5, height: HEIGHT, fill: KINDS[n.kind], rx: 2 }));
       const icon = iconSVG(n.kind); icon.setAttribute("x", "17"); icon.setAttribute("y", "16"); icon.setAttribute("width", "28"); icon.setAttribute("height", "28"); g.append(icon);
       g.append(svg("title", {}, n.name));
@@ -200,5 +168,5 @@ export function createTemplateGraph(host, onSelect, actions = {}) {
       if (moved) { autoFit = false; update(); }
     }));
   }
-  return { show, select, fit, suggest, reveal };
+  return { show, select, fit, suggest, reveal, dispose() { observer.disconnect(); root.remove(); } };
 }

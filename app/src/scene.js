@@ -199,7 +199,7 @@ export function createScene(host) {
   renderer.setPixelRatio(window.devicePixelRatio);
   host.append(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#f4f4f4");
+  scene.background = new THREE.Color(getComputedStyle(host).getPropertyValue("--cds-background").trim() || "#262626");
   const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
   camera.position.set(0, 0, 2000);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -240,7 +240,8 @@ export function createScene(host) {
     previousAspect = camera.aspect;
     camera.updateProjectionMatrix();
   }
-  new ResizeObserver(resize).observe(host);
+  const observer = new ResizeObserver(resize);
+  observer.observe(host);
   resize();
 
   renderer.setAnimationLoop(() => {
@@ -409,6 +410,7 @@ export function createScene(host) {
     return templateLayer.placements;
   }
   return { show, toggle, setApplied,
+    dispose() { observer.disconnect(); renderer.setAnimationLoop(null); clear(); controls.dispose(); renderer.dispose(); renderer.domElement.remove(); },
     selectNode: (id) => templateLayer?.select(id),
     toggleApplied: (options) => templateLayer?.toggle(options),
   };

@@ -6,15 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test tests/*.test.js",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@carbon/icons-react": "^11.92.0",
+    "@carbon/react": "^1.120.0",
     "@tauri-apps/api": "^2.12.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "three": "^0.170.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
+    "@vitejs/plugin-react": "^5.2.0",
+    "sass": "^1.108.2",
     "vite": "^7.3.7"
   }
 }

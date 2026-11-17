@@ -1,124 +1,13 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-carbon-theme="g90">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Генератор планет</title>
-    <link rel="stylesheet" href="/src/style.css" />
+    <meta name="color-scheme" content="dark" />
+    <title>Planet-gen: генератор планет</title>
   </head>
   <body>
-    <aside id="panel">
-      <header>
-        <h1>Генератор планет</h1>
-        <div class="tabs" role="tablist">
-          <button id="modeExisting" class="on" role="tab">Существующая</button>
-          <button id="modeRandom" role="tab">Случайная</button>
-          <button id="modeTemplates" role="tab">Шаблоны</button>
-        </div>
-      </header>
-
-      <section id="existing">
-        <div class="section">Планета из системы</div>
-        <label class="field">Система <select id="system"></select></label>
-        <label class="field">Планета <select id="planet"></select></label>
-        <label class="field file">Файл системы <span class="filebtn">Открыть .pas<input id="file" type="file" accept=".pas,.json" /></span></label>
-        <p class="hint">Кисти CSG и параметры берутся из системы. Поля ниже можно изменить перед генерацией.</p>
-      </section>
-
-      <section id="random" hidden>
-        <div class="section">Случайная планета</div>
-        <label class="field">Архетип <select id="rndBiome"></select></label>
-        <label class="field">Радиус, от и до
-          <span class="pair"><input id="rndRadiusMin" type="number" value="300" step="50" /><input id="rndRadiusMax" type="number" value="900" step="50" /></span>
-        </label>
-        <button id="reroll">Новая планета</button>
-        <p class="hint">Зерно и параметры выбираются случайно в пределах редактора систем игры. Процедурные кисти биома игра добавляет сама; здесь их нет.</p>
-      </section>
-
-      <section id="templates" hidden>
-        <div class="section">Шаблон планеты</div>
-        <label class="field">Шаблон <select id="templateSelect"></select></label>
-        <div id="templateId" class="mono hint"></div>
-        <p id="templateDescription" class="hint"></p>
-        <div class="template-buttons"><button id="newTemplate">Создать заготовку</button><button id="exportTemplate">Сохранить JSON</button></div>
-        <label class="field file"><span class="filebtn">Загрузить шаблон JSON<input id="importTemplate" type="file" accept=".json" /></span></label>
-        <div class="section">Параметры шаблона FFA</div>
-        <label class="field">Игроки <input id="players" type="number" value="4" min="3" max="12" step="1" /></label>
-        <label class="field">Seed шаблона <input id="templateSeed" type="number" value="42" min="0" max="4294967295" step="1" /></label>
-        <label class="field">Количество металла <select id="metalScale"><option value="0.5">Половина</option><option value="1" selected>Обычное</option><option value="1.5">В 1.5 раза больше</option><option value="2">Вдвое больше</option></select></label>
-        <button id="rerollTemplate">Новый вариант шаблона</button>
-        <p class="hint">Изменения применяются автоматически к той же основе.</p>
-        <div class="section">Слои шаблона</div>
-        <div class="layer-options">
-          <label><input type="checkbox" data-applied-layer="spawn" checked />Спавны</label>
-          <label><input type="checkbox" data-applied-layer="metal" checked />Металл</label>
-          <label><input type="checkbox" data-applied-layer="blocker" checked />Блокеры</label>
-          <label><input type="checkbox" data-applied-layer="ramp" checked />Рампы</label>
-          <label><input type="checkbox" data-applied-layer="region" checked />Области</label>
-          <label><input type="checkbox" data-applied-layer="links" checked />Связи</label>
-          <label><input type="checkbox" data-applied-layer="debug" />Подписи</label>
-          <label><input type="checkbox" data-applied-layer="icons" checked />Значки областей</label>
-        </div>
-        <button id="exportResult" disabled>Сохранить результат JSON</button>
-      </section>
-
-      <details id="paramsBox" open>
-        <summary>Параметры генератора</summary>
-        <div id="params"></div>
-      </details>
-
-      <div class="actions">
-        <label class="field inline">Уклон для металла, ° <input id="slope" type="number" value="40" step="1" /></label>
-        <button id="run" class="primary">Сгенерировать</button>
-      </div>
-    </aside>
-
-    <main>
-      <div id="view"></div>
-      <div id="topbar">
-        <div id="title"><div class="main">Нет планеты</div><div class="sub"></div></div>
-        <div id="tools">
-          <button id="tTex" class="on" title="Текстуры биомов игры">Текстуры</button>
-          <button id="tWater" class="on" title="Вода и лава">Вода</button>
-          <button id="tCsg" class="on" title="Кисти сложения CSG">CSG</button>
-          <button id="tSub" title="Контуры кистей вычитания">Вычитание</button>
-          <button id="tMetal" class="on" title="Металлические точки">Металл</button>
-          <button id="tCand" title="Кандидаты металла">Кандидаты</button>
-          <button id="tWire" title="Сетка поверхности">Сетка</button>
-        </div>
-      </div>
-      <div id="status" hidden></div>
-      <div id="toast" hidden></div>
-    </main>
-
-    <aside id="card">
-      <div class="kind">Результат</div>
-      <h2 id="cardTitle">Нет данных</h2>
-      <table id="stats"></table>
-      <h3>Подбиомы</h3>
-      <div id="biomes" class="biomes"></div>
-      <h3>Кисти CSG</h3>
-      <div id="csg" class="hint"></div>
-      <div id="note" class="hint gap"></div>
-    </aside>
-    <aside id="templateCard" hidden>
-      <div id="graphSplitter" role="separator" tabindex="0" aria-label="Ширина панели нод. Перетащите границу или используйте клавиши влево и вправо" aria-orientation="vertical" title="Потяните для изменения ширины. Двойной щелчок сбрасывает ширину."></div>
-      <div class="graph-header"><div><div class="kind">Шаблон и его экземпляры</div><h2>Структура генерации</h2></div></div>
-      <div id="appliedStats" class="hint"></div>
-      <div id="nodeCanvas"></div>
-      <div class="graph-help">Тяните ноду для перемещения, порты для связей. ПКМ по фону: создать. ПКМ по связи: удалить.</div>
-      <div class="node-inspector"><div class="inspector-actions"><button id="clearSelection">Снять выделение</button><button id="duplicateNode" disabled>Копировать</button><button id="deleteNode" disabled>Удалить</button></div><h3 id="nodeTitle"></h3><p id="nodeError" class="form-error" role="status"></p><div id="nodeFields"></div><details><summary>Данные экземпляров</summary><pre id="nodeDetails"></pre></details></div>
-      <p id="templateNotice" class="hint"></p>
-    </aside>
-    <dialog id="newTemplateDialog">
-      <form id="newTemplateForm">
-        <h2>Новый шаблон</h2><label class="field">Основа<select id="newTemplateMode"><option value="empty">Пустой со стартовой нодой</option><option value="copy">Копия выбранного шаблона</option></select></label>
-        <label class="field">ID на латинице <input id="newTemplateId" required pattern="[a-zA-Z][a-zA-Z0-9_-]*" maxlength="80" placeholder="my_template" /></label>
-        <label class="field">Название <input id="newTemplateName" required maxlength="100" /></label>
-        <p id="newTemplateError" class="form-error"></p>
-        <button type="button" id="cancelTemplate">Отмена</button><button type="submit" class="primary">Создать</button>
-      </form>
-    </dialog>
-    <script type="module" src="/src/main.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
