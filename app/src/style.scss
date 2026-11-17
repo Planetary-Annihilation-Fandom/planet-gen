@@ -114,6 +114,18 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .node-field .cds--number__input-wrapper, .node-field .cds--select-input__wrapper,
 .node-field .cds--text-input__field-outer-wrapper { min-width: 0; width: 100%; }
 .node-field .cds--text-input, .node-field .cds--number input, .node-field .cds--select-input { padding-inline: spacing.$spacing-03; }
+.node-field .cds--number input { min-inline-size: 0; }
 .node-field .cds--select-input { padding-right: spacing.$spacing-07; }
 .node-field .cds--form-requirement, .node-field .cds--form__helper-text { grid-column: 1 / -1; }
 .template-node .cds--accordion__heading { padding-inline: spacing.$spacing-04; }
+
+.template-node-heading { background: var(--cds-layer-02); border-bottom: 1px solid var(--cds-border-strong-01); user-select: none; }
+.template-node-heading:hover { background: var(--cds-layer-hover-02); }
+.react-flow__node.dragging { z-index: 210 !important; }
+.react-flow__node.dragging .template-node { outline: 2px solid var(--cds-border-interactive); }
+.react-flow__node.dragging .template-node-heading { cursor: grabbing; background: var(--cds-layer-selected-02); }
+.react-flow__edge.edge-removing .react-flow__edge-path { opacity: .25; stroke-dasharray: 4 4; }
+.react-flow__edge.edge-target .react-flow__edge-path { stroke: var(--cds-support-info); stroke-width: 4; }
+.react-flow__edge.edge-preview .react-flow__edge-path { stroke: var(--cds-support-info); stroke-width: 3; stroke-dasharray: 6 4; }
+.drag-preview-status { position: absolute; bottom: spacing.$spacing-10; inset-inline: spacing.$spacing-05; z-index: 220; pointer-events: none; padding: spacing.$spacing-03 spacing.$spacing-05; color: var(--cds-text-primary); background: var(--cds-layer-selected-01); @include type.type-style('body-compact-01'); }
+.drag-preview-status.invalid { color: var(--cds-text-error); }

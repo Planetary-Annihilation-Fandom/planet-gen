@@ -74,13 +74,16 @@ function mesh(positions, indices, color, opacity) {
 }
 
 // Залитый геодезический диск; высота купола задаётся в мировых единицах.
-export function area(project, center, radius, color, { opacity = 0.35, height = 0, lift = 2 } = {}) {
-  const d = new THREE.Vector3(...center).normalize(), [x, y] = frame(d);
+export function area(project, center, radius, color, { opacity = 0.35, height = 0, lift = 2, basis, aspect = 1, slope = false } = {}) {
+  const d = new THREE.Vector3(...center).normalize();
+  const [x, y] = basis ? [new THREE.Vector3(...basis.forward), new THREE.Vector3(...basis.right)] : frame(d);
   const positions = [], indices = [], rings = 8, segments = 48;
   for (let r = 0; r <= rings; r++) for (let s = 0; s <= segments; s++) {
-    const t = r / rings, a = s / segments * Math.PI * 2, angle = radius * t;
-    const dir = d.clone().multiplyScalar(Math.cos(angle)).addScaledVector(x, Math.sin(angle) * Math.cos(a)).addScaledVector(y, Math.sin(angle) * Math.sin(a));
-    const h = height * Math.sqrt(Math.max(0, 1-t*t));
+    const t = r / rings, a = s / segments * Math.PI * 2;
+    const tangent = x.clone().multiplyScalar(Math.cos(a)).addScaledVector(y, Math.sin(a) * aspect);
+    const angle = radius * t * tangent.length(); tangent.normalize();
+    const dir = d.clone().multiplyScalar(Math.cos(angle)).addScaledVector(tangent, Math.sin(angle));
+    const h = height * (slope ? (1 + t * Math.cos(a)) / 2 : Math.sqrt(Math.max(0, 1-t*t)));
     positions.push(...project(dir, lift + h).toArray());
     if (r && s) {
       const i = r * (segments + 1) + s;

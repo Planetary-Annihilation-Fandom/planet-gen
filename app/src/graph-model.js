@@ -7,6 +7,7 @@ export function analyzeGraph(template) {
   for (const l of template.links) {
     if (!nodes.has(l.from) || !nodes.has(l.to)) throw new Error("Связь ссылается на неизвестную ноду");
     if (nodes.get(l.to).kind === "spawn") throw new Error("У стартовой ноды нет входа");
+    if (nodes.get(l.from).kind === "front") throw new Error("Фронт завершает путь и не имеет выхода");
     const key = l.from+":"+l.to;
     if (seen.has(key)) throw new Error("Эта связь уже существует");
     seen.add(key); parents.get(l.to).push(l.from); children.get(l.from).push(l.to);
@@ -41,4 +42,21 @@ export function connectNodes(template, from, to) {
 }
 export function disconnectNodes(template, from, to) {
   const next=structuredClone(template); next.links=next.links.filter(l=>l.from!==from||l.to!==to); return next;
+}
+export function moveThroughLink(template, nodeId, canvas, edge) {
+  const next = structuredClone(template), node = next.nodes.find(n => n.id === nodeId);
+  if (['spawn', 'front'].includes(node.kind)) throw new Error('Вставлять в связь и извлекать можно металл, блокер и рампу');
+  const parents = next.links.filter(l => l.to === nodeId).map(l => l.from);
+  const children = next.links.filter(l => l.from === nodeId).map(l => l.to);
+  next.links = next.links.filter(l => l.from !== nodeId && l.to !== nodeId);
+  for (const from of parents) for (const to of children) {
+    if (!next.links.some(l => l.from === from && l.to === to)) next.links.push({ from, to });
+  }
+  if (edge) {
+    if (!next.links.some(l => l.from === edge.from && l.to === edge.to)) throw new Error('Выберите связь между другими нодами');
+    next.links = next.links.filter(l => l.from !== edge.from || l.to !== edge.to);
+    next.links.push({ from: edge.from, to: nodeId }, { from: nodeId, to: edge.to });
+  }
+  node.canvas = canvas;
+  analyzeGraph(next); return next;
 }

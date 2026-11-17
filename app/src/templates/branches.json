@@ -1,0 +1,87 @@
+{
+  "version": 3,
+  "id": "branches",
+  "name": "1v1: две ветви",
+  "description": "Один граф стороны игрока, зеркальное размещение для соперника.",
+  "players": {
+    "min": 2,
+    "max": 2,
+    "default": 2
+  },
+  "nodes": [
+    {
+      "id": "spawn",
+      "kind": "spawn",
+      "name": "Спавн игрока",
+      "canvas": {
+        "x": 0,
+        "y": 100
+      },
+      "size": 12
+    },
+    {
+      "id": "metal",
+      "kind": "metal",
+      "name": "Металл",
+      "canvas": {
+        "x": 370,
+        "y": 0
+      },
+      "size": 16,
+      "density": 7
+    },
+    {
+      "id": "blocker",
+      "kind": "blocker",
+      "name": "Полоса блокера",
+      "canvas": {
+        "x": 370,
+        "y": 280
+      },
+      "size": 20,
+      "shape": "strip"
+    },
+    {
+      "id": "ramp",
+      "kind": "ramp",
+      "name": "Рампа",
+      "canvas": {
+        "x": 740,
+        "y": 120
+      },
+      "size": 14,
+      "orientation": 45
+    },
+    {
+      "id": "front",
+      "kind": "front",
+      "name": "Фронт",
+      "canvas": {
+        "x": 1110,
+        "y": 120
+      }
+    }
+  ],
+  "links": [
+    {
+      "to": "metal",
+      "from": "spawn"
+    },
+    {
+      "to": "blocker",
+      "from": "spawn"
+    },
+    {
+      "to": "ramp",
+      "from": "metal"
+    },
+    {
+      "to": "ramp",
+      "from": "blocker"
+    },
+    {
+      "to": "front",
+      "from": "ramp"
+    }
+  ]
+}

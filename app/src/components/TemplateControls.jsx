@@ -4,7 +4,7 @@ import { Add, Download, Renew } from '@carbon/icons-react';
 import { Choice, NumericField } from './Fields.jsx';
 import { downloadJSON } from '../model/planet.js';
 
-const APPLIED_LAYERS = { spawn: 'Спавны', metal: 'Металл', blocker: 'Блокеры', ramp: 'Рампы', region: 'Области', links: 'Связи', debug: 'Подписи', icons: 'Значки областей' };
+const APPLIED_LAYERS = { spawn: 'Спавны', metal: 'Металл', blocker: 'Блокеры', ramp: 'Рампы', front: 'Фронт и направляющая', links: 'Связи', debug: 'Подписи', icons: 'Значки областей' };
 
 export function TemplateControls({ store, snapshot, notify, base, layers, setLayers, placements, disabled }) {
   const { template, templates, parameters, applied } = snapshot;
@@ -15,7 +15,8 @@ export function TemplateControls({ store, snapshot, notify, base, layers, setLay
     if (!file) return;
     try {
       if (file.size > 256000) throw new Error('JSON должен быть меньше 256 КБ');
-      store.add(JSON.parse((await file.text()).replace(/^\uFEFF/, '')));
+      const raw = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
+      store.add(raw);
     } catch (error) { notify(error.message, true); }
     event.target.value = '';
   }
@@ -32,9 +33,8 @@ export function TemplateControls({ store, snapshot, notify, base, layers, setLay
       <Button id="exportTemplate" kind="ghost" size="sm" renderIcon={Download} onClick={() => downloadJSON(`${template.id}.json`, template)}>JSON</Button>
     </div>
     <FileUploaderButton id="importTemplate" labelText="Загрузить шаблон JSON" buttonKind="ghost" size="sm" accept={['.json']} disableLabelChanges onChange={importFile} disabled={disabled} />
-    <div className="section-heading">Параметры FFA</div>
-    <NumericField id="players" label="Игроки" min={template.players.min} max={template.players.max} value={parameters.players} disabled={disabled}
-      onChange={players => store.parameters({ players })} />
+    <div className="section-heading">Шаблон 1v1</div>
+    <p className="helper-text">Размер: диаметр в процентах пути от спавна до фронта. При текущем радиусе 10% ≈ {Math.round(parameters.planetRadius * Math.PI / 20)} единиц поверхности. Насыщенность металла: число точек для области размера 10%; число растёт с площадью.</p>
     <NumericField id="templateSeed" label="Зерно шаблона" min={0} max={4294967295} value={parameters.seed} disabled={disabled} onChange={seed => store.parameters({ seed })} />
     <Choice id="metalScale" label="Количество металла" value={parameters.metalScale} options={[[0.5, 'Половина'], [1, 'Обычное'], [1.5, 'В 1.5 раза больше'], [2, 'Вдвое больше']]}
       disabled={disabled} onChange={value => store.parameters({ metalScale: Number(value) })} />

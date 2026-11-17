@@ -1,10 +1,10 @@
-import neighbors from '../templates/neighbor_fronts.json';
-import shared from '../templates/shared_regions.json';
+import duel from '../templates/duel.json';
+import branches from '../templates/branches.json';
 import { validateTemplate, applyTemplate } from '../template-engine.js';
-import { connectNodes, disconnectNodes, layoutGraph } from '../graph-model.js';
+import { connectNodes, disconnectNodes, layoutGraph, moveThroughLink } from '../graph-model.js';
 import { createNode, setField } from '../node-types.js';
 
-const STORAGE = 'planet-gen.templates.v1';
+const STORAGE = 'planet-gen.templates.v3';
 
 // Модель хранит шаблоны и историю; исходная раскладка назначается один раз при загрузке.
 function withPositions(raw) {
@@ -14,19 +14,29 @@ function withPositions(raw) {
   return template;
 }
 export function createTemplateStore(storage = globalThis.localStorage) {
-  let templates = [withPositions(neighbors), withPositions(shared)];
+  let templates = [withPositions(duel), withPositions(branches)];
   let loadError = '';
+  storage?.removeItem('planet-gen.templates.v1');
+  storage?.removeItem('planet-gen.legacy-imports');
+  let savedSource = storage?.getItem(STORAGE);
   try {
-    const saved = JSON.parse(storage?.getItem(STORAGE) ?? '[]');
+    const saved = JSON.parse(savedSource ?? '[]');
     if (!Array.isArray(saved) || saved.length > 52) throw new Error('Некорректный список шаблонов');
-    const restored = saved.map(withPositions);
-    for (const item of restored) {
-      const i = templates.findIndex(t => t.id === item.id);
-      if (i < 0) templates.push(item); else templates[i] = item;
+    const current = saved.filter(raw => ![1, 2].includes(raw?.version));
+    if (current.length !== saved.length) { savedSource = JSON.stringify(current); storage?.setItem(STORAGE, savedSource); }
+    for (const raw of current) {
+      try {
+        const item = withPositions(raw), i = templates.findIndex(t => t.id === item.id);
+        if (i < 0) templates.push(item); else templates[i] = item;
+      } catch (error) {
+        loadError = `Часть шаблонов не загружена: ${error.message}.`;
+      }
     }
-  } catch (error) { loadError = `Сохранённые шаблоны не загружены: ${error.message}`; }
+  } catch (error) {
+    loadError = `Сохранённые шаблоны не загружены: ${error.message}. Исходные данные будут сохранены в архив восстановления перед изменениями.`;
+  }
   let id = templates[0].id, selected = null;
-  let parameters = { players: templates[0].players.default, seed: 42, metalScale: 1 };
+  let parameters = { players: 2, seed: 42, metalScale: 1, planetRadius: 500 };
   const histories = new Map(), listeners = new Set();
   const template = () => templates.find(t => t.id === id);
   const history = () => {
@@ -49,6 +59,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     listeners.forEach(listener => listener());
   }
   function save(next) {
+    if (loadError && savedSource) storage?.setItem('planet-gen.templates.v3.recovery', savedSource);
     storage?.setItem(STORAGE, JSON.stringify(next));
     templates = next;
   }
@@ -84,11 +95,11 @@ export function createTemplateStore(storage = globalThis.localStorage) {
       edit(t => {
         const node = t.nodes.find(n => n.id === nodeId);
         setField(node, path, value);
-        if (path === 'pattern' && value === 'gate') node.chain.step = Math.min(node.chain.step, node.radius * 1.8);
       });
     },
     connect(from, to) { commit(connectNodes(template(), from, to)); },
     remove(from, to) { commit(disconnectNodes(template(), from, to)); },
+    moveThroughLink(nodeId, canvas, edge) { commit(moveThroughLink(template(), nodeId, canvas, edge)); },
     move(nodeId, canvas) { edit(t => { t.nodes.find(n => n.id === nodeId).canvas = canvas; }, { generate: false }); },
     create(kind, canvas, parent) {
       const node = createNode(kind, template().nodes, canvas);
@@ -102,6 +113,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
       edit(t => t.nodes.push(node)); store.select(node.id); return node.id;
     },
     deleteNode(nodeId) {
+      if (template().nodes.find(n => n.id === nodeId)?.kind === 'spawn') throw new Error('Единственный спавн нельзя удалить');
       edit(t => { t.nodes = t.nodes.filter(n => n.id !== nodeId); t.links = t.links.filter(l => l.from !== nodeId && l.to !== nodeId); });
     },
     travel(direction) {
@@ -118,7 +130,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     },
     newTemplate({ id, name, copy }) {
       const next = copy ? structuredClone(template()) : {
-        version: 2, players: { min: 3, max: 12, default: 4 }, nodes: [{ ...createNode('spawn'), id: 'starts' }], links: [],
+        version: 3, players: { min: 2, max: 2, default: 2 }, nodes: [{ ...createNode('spawn'), id: 'starts' }], links: [],
       };
       next.id = id.trim(); next.name = name.trim(); store.add(next);
     },
