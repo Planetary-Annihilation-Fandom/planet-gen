@@ -1,8 +1,13 @@
+/**
+ * Собирает результат композиции из отдельных этапов: раскрытие, размещение, детализация и выбор стартов.
+ * Исходный шаблон остаётся редактируемым; поля анализа и геометрия принадлежат конкретной регенерации.
+ */
 import { expandComposition } from "./composition-graph.js";
 import { placeComposition } from "./composition-layout.js";
 import { realizeComposition } from "./navigation.js";
 import { norm, dot } from "./generation-math.js";
 import { evaluateSpawns } from "./spawn-selection.js";
+/** Возвращает композицию без анализа до получения основы и полный результат после её получения. */
 export function applyComposition(template, parameters, base) {
   const graph = expandComposition(template, parameters.seed),
     zones = placeComposition(graph, parameters.seed, parameters.metalScale);
@@ -81,6 +86,7 @@ export function applyComposition(template, parameters, base) {
     candidates: selection.candidates,
     paths: selection.paths,
     score: selection.score,
+    criteria: selection.criteria,
   };
   result.debug.metal = zones.reduce((s, z) => s + z.points.length, 0);
   result.debug.zones = result.zones.length;
@@ -88,8 +94,5 @@ export function applyComposition(template, parameters, base) {
     selection.error ||
     `Найдено ${selection.spawns.length} стартов. Оценка различий: ${selection.score.toFixed(3)}; меньшее значение означает более близкие условия.`;
   if (selection.error) result.debug.warnings.push(selection.error);
-  result.debug.warnings.push(
-    "Навигация и выбор стартов рассчитаны на собственной сетке поверхности; это приближение к навигации PA.",
-  );
   return result;
 }

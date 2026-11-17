@@ -1,3 +1,4 @@
+import { DisplayControls } from './components/DisplayControls.jsx';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Accordion, AccordionItem, Button, Checkbox, Content, Layer, InlineLoading, InlineNotification, Theme, ToastNotification } from '@carbon/react';
@@ -116,7 +117,7 @@ export default function App() {
         <div className="settings-heading"><h1>Параметры</h1>
           <Button kind="ghost" size="sm" hasIconOnly renderIcon={Close} iconDescription="Скрыть параметры" onClick={() => setSettingsOpen(false)} />
         </div>
-        {template && <Layer className="source-form"><TemplateControls store={store} snapshot={snapshot} notify={notify} base={base} layers={appliedLayers} setLayers={setAppliedLayers} placements={placements} disabled={busy} /></Layer>}
+        {template && <Layer className="source-form"><TemplateControls store={store} snapshot={snapshot} notify={notify} base={base} placements={placements} disabled={busy} /></Layer>}
         <Accordion className="generator-accordion" size="sm">
           <AccordionItem title={template ? 'Параметры основы' : 'Параметры генератора'} open>
           <GeneratorFields parameters={parameters} onChange={setParameters} template={template} disabled={busy} />
@@ -129,9 +130,11 @@ export default function App() {
       <section className="planet-workspace" aria-label="Просмотр планеты">
         <div className={`viewport-toolbar${settingsOpen ? ' settings-open' : ''}`}>
           {!settingsOpen && <Button kind="secondary" size="sm" hasIconOnly renderIcon={Menu} iconDescription="Показать параметры" aria-controls="panel" aria-expanded={false} onClick={() => setSettingsOpen(true)} />}
-          <Button kind="secondary" size="sm" hasIconOnly renderIcon={SettingsAdjust} iconDescription="Слои поверхности" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)} />
-          {layersOpen && <section className="surface-layers" aria-label="Слои поверхности"><h3>Слои поверхности</h3>
+          <Button kind="secondary" size="sm" hasIconOnly renderIcon={SettingsAdjust} iconDescription="Слои планеты и расчёт стартов" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)} />
+          {/* Слои доступны над планетой и не зависят от видимости панели генерации. */}
+          {layersOpen && <section className="surface-layers" aria-label="Слои планеты"><h3>Поверхность</h3>
             {Object.entries(SURFACE_LAYERS).filter(([key]) => !template || ['textures', 'wire'].includes(key)).map(([key, label]) => <Checkbox id={`surface-${key}`} key={key} labelText={label} checked={layers[key]} onChange={(_, { checked }) => setLayers({ ...layers, [key]: checked })} />)}
+            {template && <DisplayControls snapshot={snapshot} layers={appliedLayers} setLayers={setAppliedLayers} />}
           </section>}
         </div>
         {template && <div className="final-graph-toggle"><Button size="sm" kind="secondary" onClick={() => setFinalOpen(v => !v)} aria-expanded={finalOpen}>Конечный граф</Button></div>}

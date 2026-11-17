@@ -4,6 +4,7 @@ import { area, point, band, label, disposeObject } from "./primitives.js";
 import { KINDS } from "./template-engine.js";
 import { iconTexture } from "./icons.js";
 
+/** Проецирует области и металл на готовую поверхность; результат экспорта использует те же положения, что и просмотр. */
 export function createTemplateLayer(project, data, radius) {
   const root = new THREE.Group(), zones = new THREE.Group(), links = new THREE.Group(), debug = new THREE.Group();
   const guide = new THREE.Group();
@@ -51,7 +52,7 @@ export function createTemplateLayer(project, data, radius) {
   function select(nodeId) {
     for (const g of zones.children) g.traverse((o) => {
       if (!o.material) return;
-      const selected = g.userData.nodeId === nodeId;
+      const selected = !!nodeId && g.userData.nodeId === nodeId;
       o.material.opacity = selected ? Math.min(0.9, o.userData.opacity * 1.9) : nodeId ? o.userData.opacity * 0.45 : o.userData.opacity;
       o.material.color.copy(o.userData.color);
       if (selected) o.material.color.lerp(new THREE.Color("#ffffff"), 0.28);

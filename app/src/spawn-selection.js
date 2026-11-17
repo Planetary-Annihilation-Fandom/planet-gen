@@ -1,3 +1,9 @@
+/**
+ * Подбирает старты после реализации карты.
+ * Сначала исключает пересечения с областями и непригодные площадки, затем сравнивает наборы по доступности ресурсов, выходам и путям между игроками.
+ * Поля сохраняются для показа причин выбора на планете.
+ */
+import { hasSpawnClearance } from "./composition-layout.js";
 import { angle, tangentBasis } from "./generation-math.js";
 import { nearest, shortestPaths, pathTo } from "./navigation.js";
 
@@ -45,6 +51,7 @@ function localExits(mesh, start) {
   return flow;
 }
 
+/** Сохраняет маски отсева и оценки кандидатов вместе с выбранным набором стартов. */
 export function evaluateSpawns(
   mesh,
   zones,
@@ -64,6 +71,9 @@ export function evaluateSpawns(
     slope: mesh.slopes,
     walkable: mesh.walkable.map((v) => +v),
     buildable: [],
+    clearance: mesh.directions.map((direction) =>
+      Number(hasSpawnClearance(direction, zones)),
+    ),
     wealthShort: [],
     wealthMedium: [],
     wealthLong: [],
@@ -92,15 +102,20 @@ export function evaluateSpawns(
         );
       }, 0);
   }
+  // Маска сохраняется для просмотра причин отсева на самой планете.
+  fields.spawnEligibility = mesh.directions.map((direction, index) =>
+    Number(
+      fields.clearance[index] === 1 &&
+        fields.buildable[index] >= 0.75 &&
+        fields.wealthShort[index] > 0 &&
+        mesh.neighbors[index].filter((neighbor) =>
+          Number.isFinite(mesh.edgeCost(index, neighbor)),
+        ).length >= 3,
+    ),
+  );
   let eligible = mesh.directions
-    .map((d, i) => i)
-    .filter(
-      (i) =>
-        fields.buildable[i] >= 0.75 &&
-        fields.wealthShort[i] > 0 &&
-        mesh.neighbors[i].filter((j) => Number.isFinite(mesh.edgeCost(i, j)))
-          .length >= 3,
-    );
+    .map((direction, index) => index)
+    .filter((index) => fields.spawnEligibility[index] === 1);
   eligible.sort(
     (a, b) =>
       fields.buildable[b] +
@@ -144,6 +159,7 @@ export function evaluateSpawns(
     if (!Number.isFinite(a) || !Number.isFinite(b)) return 1;
     return Math.min(1, Math.abs(a - b) / r);
   };
+  /** Отбрасывает недопустимые сочетания до суммирования различий, чтобы богатство не компенсировало нарушение условий. */
   function assess(set) {
     let imbalance = 0,
       tempo = 0;
@@ -231,10 +247,14 @@ export function evaluateSpawns(
           ),
         });
       }
-  fields.spawnScore = mesh.directions.map((_, i) => {
-    const c = candidates.find((c) => c.index === i);
-    return c ? c.buildable + Math.log1p(c.wealth[0]) : 0;
-  });
+  fields.spawnScore = mesh.directions.map((direction, index) =>
+    fields.spawnEligibility[index]
+      ? fields.buildable[index] + Math.log1p(fields.wealthShort[index]) * 0.15
+      : Infinity,
+  );
+  fields.exits = mesh.directions.map(() => Infinity);
+  for (const candidate of candidates)
+    fields.exits[candidate.index] = candidate.exits;
   fields.arrival = mesh.directions.map((_, i) =>
     best ? Math.min(...best.set.map((c) => c.distances[i])) : Infinity,
   );
@@ -256,6 +276,14 @@ export function evaluateSpawns(
     fields,
     candidates: candidates.map(({ distances, previous, ...c }) => c),
     score: best?.score ?? null,
+    criteria: {
+      minimumBuildable: 0.75,
+      minimumExits: 2,
+      minimumSeparation: minimum * r,
+      maximumSeparation: maximum * r,
+      maximumWealthDifference: 0.6,
+      spawnRadius: 0.065 * r,
+    },
     error: best
       ? ""
       : `Не найден набор из ${players} допустимых стартов: требуется площадка, доступный металл, выходы и подходящая длина путей. Смените seed, композицию или темп контакта.`,

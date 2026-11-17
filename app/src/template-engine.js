@@ -1,3 +1,4 @@
+import { metalSpotCount } from './generation-math.js';
 import { applyComposition } from './composition-engine.js';
 import { placeSide } from './sphere-layout.js';
 import { analyzeGraph } from './graph-model.js';
@@ -54,9 +55,8 @@ export function applyTemplate(raw, { players = 2, seed, metalScale = 1, planetRa
       const basis = { forward: mirror(add(mul(forward, Math.cos(angle)), mul(right, Math.sin(angle))), side), right: mirror(add(mul(right, Math.cos(angle)), mul(forward, -Math.sin(angle))), side) };
       const zone = { id: `${n.id}:${side ?? 'front'}`, nodeId: n.id, kind: n.kind, name: n.name, owner: side, direction: mirror(p.direction, side), basis, radius: p.radius, size: n.size, shape: n.shape, orientation: n.orientation, height: 0, points: [], inputs: [] };
       if (n.kind === 'metal') {
-        // Насыщенность — число точек в эталонной области размера 10%; плотность
-        // сохраняется при изменении площади. Парные точки отражаются вместе с зоной.
-        const count = Math.max(1, Math.round(n.density * (1-Math.cos(p.radius)) / (1-Math.cos(HALF*.05)) * metalScale));
+        // Размер разносит точки по области, но не увеличивает их число.
+        const count = metalSpotCount(n.density, metalScale);
         if (metalCount + count > 10000) throw new Error('Больше 10000 точек металла. Уменьшите насыщенность или размер областей.');
         const mr = random(seed ^ hash(n.id));
         for (let j = 0; j < count; j++) {

@@ -1,6 +1,7 @@
 import { useMemo, useRef } from "react";
 import { ReactFlow, Background } from "@xyflow/react";
 import { Button } from "@carbon/react";
+/** Показывает экземпляры после раскрытия и позволяет перейти к их исходным нодам, не изменяя граф карты. */
 export function FinalGraphPanel({ applied, onClose, onSelect }) {
   const graph = applied.finalGraph;
   const flow = useRef();

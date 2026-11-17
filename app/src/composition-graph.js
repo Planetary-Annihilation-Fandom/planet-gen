@@ -1,7 +1,12 @@
+/**
+ * Раскрывает управляющие ноды в конечный граф карты.
+ * Каждый вызов получает свой набор экземпляров; пространственные циклы связывают уже созданные элементы, а невызванные определения остаются только в шаблоне.
+ */
 import { seeded, hash } from "./generation-math.js";
 const physical = new Set(["metal", "blocker", "ramp"]);
 
 // Раскрытие управляет экземплярами; пространственные циклы сохраняются как связи.
+/** Создаёт независимые экземпляры фрагментов и выбирает ветви с учётом seed. */
 export function expandComposition(template, seed) {
   const byId = new Map(template.nodes.map((n) => [n.id, n]));
   const outgoing = (id) => template.links.filter((l) => l.from === id);
@@ -29,6 +34,7 @@ export function expandComposition(template, seed) {
     if (from !== to && !links.some((l) => l.from === from && l.to === to))
       links.push({ from, to });
   }
+  /** Разворачивает один вызов; локальные таблицы не позволяют экземплярам разных вызовов смешиваться. */
   function scope(roots, incoming, counts = {}, depth = 0) {
     if (depth > 24) throw new Error("Превышена глубина раскрытия фрагментов");
     const instances = new Map(),
@@ -36,6 +42,7 @@ export function expandComposition(template, seed) {
       exits = new Set();
     let hasExit = false;
     const scopeId = serial++;
+    /** Добавляет физическую область один раз; повторный приход образует связь карты, а не копию области. */
     function visit(id, previous) {
       if (++steps > 3000 || nodes.length > 240)
         throw new Error(

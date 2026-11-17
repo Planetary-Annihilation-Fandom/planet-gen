@@ -193,9 +193,10 @@ function weightAttributes(geo, p) {
   geo.setAttribute("weights1", new THREE.BufferAttribute(w1, 4));
 }
 
+/** Управляет WebGL-просмотром; геометрия обновляется при генерации, кадры рисуются только после изменений. */
 export function createScene(host) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   host.append(renderer.domElement);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(getComputedStyle(host).getPropertyValue("--cds-background").trim() || "#262626");
@@ -207,6 +208,19 @@ export function createScene(host) {
   const events = new AbortController();
   const { signal } = events;
   let rotationStart = null, minDistance = 1;
+  let pendingFrame = null, disposed = false;
+  /**
+   * Планета неподвижна между действиями пользователя. Один отложенный кадр
+   * объединяет изменения камеры и слоёв, не занимая GPU непрерывным циклом.
+   */
+  function invalidate() {
+    if (disposed || document.hidden || pendingFrame !== null) return;
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = null;
+      if (!disposed && !document.hidden) renderer.render(scene, camera);
+    });
+  }
+  document.addEventListener('visibilitychange', invalidate, { signal });
   renderer.domElement.style.touchAction = 'none';
   renderer.domElement.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
@@ -220,6 +234,7 @@ export function createScene(host) {
       (event.clientY - rotationStart.y) * scale, (event.clientX - rotationStart.x) * scale, 0, 'YXZ'));
     planet.quaternion.premultiply(rotation).normalize();
     rotationStart.x = event.clientX; rotationStart.y = event.clientY;
+    invalidate();
   }, { signal });
   const finishRotation = () => { rotationStart = null; };
   renderer.domElement.addEventListener('pointerup', finishRotation, { signal });
@@ -228,6 +243,7 @@ export function createScene(host) {
   renderer.domElement.addEventListener('wheel', event => {
     event.preventDefault();
     camera.position.setLength(Math.max(minDistance, Math.min(100000, camera.position.length() * Math.exp(Math.max(-1, Math.min(1, event.deltaY * 0.001))))));
+    invalidate();
   }, { signal, passive: false });
   scene.add(new THREE.AmbientLight("#ffffff", 0.6));
   const sun = new THREE.DirectionalLight("#ffffff", 1.8);
@@ -239,6 +255,7 @@ export function createScene(host) {
   planet.add(group);
   let parts = {}, previousAspect = null;
   let templateLayer = null, project = null, planetRadius = 500, onPick = () => {};
+  let appliedData = null, appliedProject = null;
   const picker = new THREE.Raycaster();
   let pointerStart = null;
   renderer.domElement.addEventListener("pointerdown", (e) => { pointerStart = [e.clientX, e.clientY]; });
@@ -264,18 +281,16 @@ export function createScene(host) {
     }
     previousAspect = camera.aspect;
     camera.updateProjectionMatrix();
+    invalidate();
   }
   const observer = new ResizeObserver(resize);
   observer.observe(host);
   resize();
 
-  renderer.setAnimationLoop(() => {
-    renderer.render(scene, camera);
-  });
 
   function clear() {
     templateLayer?.dispose();
-    templateLayer = null; project = null;
+    templateLayer = null; project = null; appliedData = null; appliedProject = null;
     group.traverse((o) => {
       o.geometry?.dispose();
       for (const m of [o.material].flat()) {
@@ -298,7 +313,7 @@ export function createScene(host) {
         b.op === "Add" && b.diffuse ? loadTexture(b.diffuse).then(brushTexture, () => null) : null,
       ),
     );
-    if (serial !== showSerial) {
+    if (disposed || serial !== showSerial) {
       layers.dispose(); brushMaps.forEach(map => map?.dispose()); return;
     }
     clear();
@@ -430,6 +445,7 @@ export function createScene(host) {
     const dist = p.max_radius * 3.2 * Math.max(1, 1/camera.aspect);
     if (!preserveView) camera.position.setLength(dist);
     minDistance = p.max_radius * 1.05;
+    invalidate();
   }
 
   function toggle(o) {
@@ -441,19 +457,31 @@ export function createScene(host) {
     parts.cand.visible = o.candidates;
     parts.add.visible = o.csg;
     parts.subtract.visible = o.subtract;
+    invalidate();
   }
 
+  /**
+   * Перемещение карточки меняет только канвас. Пока геометрия областей и данные
+   * анализа прежние, сохраняем WebGL-объекты, текстуры подписей и расчётные слои.
+   */
   function setApplied(data, pick) {
+    if (data && templateLayer && appliedProject === project &&
+        appliedData?.zones === data.zones && appliedData?.analysis === data.analysis) {
+      onPick = pick;
+      return templateLayer.placements;
+    }
     if (templateLayer) { group.remove(templateLayer.root); templateLayer.dispose(); templateLayer = null; }
-    if (!data || !project) return;
+    if (!data || !project) { invalidate(); return; }
     templateLayer = createTemplateLayer(project, data, planetRadius);
+    appliedData = data; appliedProject = project;
     group.add(templateLayer.root);
     onPick = pick;
+    invalidate();
     return templateLayer.placements;
   }
   return { show, toggle, setApplied,
-    dispose() { observer.disconnect(); renderer.setAnimationLoop(null); clear(); events.abort(); renderer.dispose(); renderer.domElement.remove(); },
-    selectNode: (id) => templateLayer?.select(id),
-    toggleApplied: (options) => templateLayer?.toggle(options),
+    dispose() { disposed = true; if (pendingFrame !== null) cancelAnimationFrame(pendingFrame); observer.disconnect(); clear(); events.abort(); renderer.dispose(); renderer.domElement.remove(); },
+    selectNode: (id) => { templateLayer?.select(id); invalidate(); },
+    toggleApplied: (options) => { templateLayer?.toggle(options); invalidate(); },
   };
 }

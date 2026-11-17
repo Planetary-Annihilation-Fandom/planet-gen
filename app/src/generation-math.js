@@ -1,3 +1,7 @@
+/**
+ * Общие вычисления на единичной сфере и воспроизводимая случайность.
+ * Углы задаются в радианах, направления нормированы; мировой радиус применяется на этапе проекции поверхности.
+ */
 export const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
 export const norm = (a) => {
   const l = Math.hypot(...a) || 1;
@@ -14,6 +18,7 @@ export function hash(text) {
   for (const c of text) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
   return h >>> 0;
 }
+/** Возвращает локальный генератор, не зависящий от глобального Math.random и других этапов генерации. */
 export function seeded(seed) {
   let s = seed >>> 0;
   return () => {
@@ -32,10 +37,12 @@ export function spherePoint(rng) {
     z,
   ];
 }
+/** Строит взаимно перпендикулярные касательные оси, в том числе вблизи полюсов. */
 export function tangentBasis(d) {
   const right = norm(cross(d, Math.abs(d[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
   return { right, forward: cross(right, d) };
 }
+/** Переносит локальное смещение на сферу, сохраняя угловое расстояние от центра. */
 export function offset(d, basis, x, y) {
   const r = Math.hypot(x, y);
   if (!r) return d;
@@ -46,4 +53,12 @@ export function offset(d, basis, x, y) {
         ((basis.forward[i] * x + basis.right[i] * y) * Math.sin(r)) / r,
     ),
   );
+}
+
+/**
+ * Насыщенность задаётся процентом от 32 точек на ноду, независимо от её площади.
+ * При обычном множителе 12% даёт четыре точки; изменение размера лишь разносит их.
+ */
+export function metalSpotCount(density, scale = 1) {
+  return Math.max(1, Math.round((density / 100) * 32 * scale));
 }

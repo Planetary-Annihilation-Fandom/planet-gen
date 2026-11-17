@@ -140,3 +140,7 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .final-graph-canvas { flex: 1; min-height: 100px; }
 .expansion-trace { max-height: 100px; overflow: auto; font-size: 12px; }
 .graph-summary .cds--tag { margin: 0; }
+
+/* Меню слоёв остаётся в пределах окна и доступно при скрытой панели параметров. */
+.surface-layers { width: min(340px, calc(100vw - 48px)); max-height: calc(100vh - 88px); overflow-y: auto; }
+.surface-layers h3:not(:first-child) { margin-top: 12px; }

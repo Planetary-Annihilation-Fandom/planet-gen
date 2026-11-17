@@ -1,3 +1,8 @@
+/**
+ * Канвас редактирует исходный шаблон, сохраняя положения карточек отдельно от карты.
+ * Цвет входа и вызовов одного фрагмента определяется его номером, чтобы ссылки
+ * между разнесёнными частями канваса можно было найти без раскрытия параметров.
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -27,7 +32,10 @@ function TemplateNode({ data, selected }) {
   const primary = fields.filter(field => type.primaryFields.includes(field.path));
   return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}`} aria-label={node.name}>
     {!['spawn','composition','fragment'].includes(node.kind) && <Handle type="target" position={Position.Left} id="input" aria-label="Вход"><Login size={16} /></Handle>}
-    <header className="template-node-heading"><strong>{node.name}</strong><span>{type.title}</span></header>
+    <header className="template-node-heading" style={['fragment','call'].includes(node.kind) ? {
+      background: `hsl(${(node.fragment * 137.508 + 235) % 360} 38% 28%)`,
+      borderTop: `3px solid hsl(${(node.fragment * 137.508 + 235) % 360} 65% 68%)`,
+    } : undefined}><strong>{node.name}</strong><span>{type.title}</span></header>
     {!['front','exit'].includes(node.kind) && <Handle type="source" position={Position.Right} id="output" aria-label="Выход"><Logout size={16} /></Handle>}
     <div className="node-fields node-primary-fields nodrag nowheel nopan" aria-label="Основные параметры">
       {(selected ? fields : primary).map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}
@@ -179,7 +187,6 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
       <Button kind="ghost" size="sm" onClick={() => flow.current?.zoomIn()}>+</Button>
       <Button kind="ghost" size="sm" onClick={() => flow.current?.fitView({ padding: 0.15 })}>Вписать граф</Button>
     </div>
-    {!!snapshot.applied.debug.warnings.length && <div className="graph-notice"><InlineNotification kind="warning" title="Примечания генерации" subtitle={snapshot.applied.debug.warnings.join("; ")} hideCloseButton lowContrast /></div>}
     {snapshot.applied.debug.error && <div className="graph-notice"><InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast /></div>}
     <Menu open={!!menu && !hidden && !collapsed} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
       {Object.entries(NODE_TYPES).filter(([kind]) => (snapshot.template.version === 4 ? !['spawn','front'].includes(kind) : !['composition','fragment','call','choice','exit','spawn'].includes(kind)) && !['front','exit'].includes(menuNode?.kind)).map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}

@@ -14,6 +14,7 @@ function withPositions(raw) {
   for (const node of template.nodes) node.canvas ??= positions.get(node.id);
   return template;
 }
+/** Хранит исходные шаблоны и историю отдельно от результатов worker; перестановка карточек не запускает расчёт карты. */
 export function createTemplateStore(storage = globalThis.localStorage) {
   let templates = [withPositions(composition), withPositions(duel), withPositions(branches)];
   let loadError = '';

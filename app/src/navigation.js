@@ -1,9 +1,14 @@
+/**
+ * Реализует проходы и оценивает навигацию по детализированной поверхности.
+ * Сферическая расчётная сетка хранит соседство, высоты и неизменные стоимости рёбер; поиски путей используют уже рассчитанные значения.
+ */
 import * as THREE from "three";
 import { angle, norm, dot, offset } from "./generation-math.js";
 import { createSurfaceProjector } from "./primitives.js";
 import { zoneDistance } from "./composition-layout.js";
 
 // Единая сферическая расчётная сетка без шва по долготе и дублирования полюсов.
+/** Сшивает одинаковые вершины икосферы, чтобы навигация не имела разрывов на границах треугольников. */
 export function makeNavigationMesh(detail = 16) {
   const geometry = new THREE.IcosahedronGeometry(1, detail),
     array = geometry.attributes.position.array;
@@ -32,6 +37,7 @@ export function makeNavigationMesh(detail = 16) {
   geometry.dispose();
   return { directions, triangles, neighbors: neighbors.map((s) => [...s]) };
 }
+/** Дейкстра возвращает стоимость и предшественника для каждой достижимой вершины; Infinity запрещает ребро. */
 export function shortestPaths(mesh, start, cost) {
   const distances = mesh.directions.map(() => Infinity),
     previous = mesh.directions.map(() => -1),
@@ -76,6 +82,7 @@ export function shortestPaths(mesh, start, cost) {
   }
   return { distances, previous };
 }
+/** Находит ближайшую разрешённую вершину; возвращает -1, если предикат исключил всю сетку. */
 export function nearest(mesh, d, predicate = () => true) {
   let found = -1,
     best = -Infinity;
@@ -88,6 +95,7 @@ export function nearest(mesh, d, predicate = () => true) {
   });
   return found;
 }
+/** Восстанавливает маршрут по предшественникам; недостижимая цель даёт пустой путь. */
 const pathTo = (previous, start, end) => {
   const p = [end];
   while (p.at(-1) !== start) {
@@ -99,6 +107,7 @@ const pathTo = (previous, start, end) => {
   return p.reverse();
 };
 
+/** Изменяет поверхность областями, прокладывает требуемые проходы и пересчитывает навигацию после деформации. */
 export function realizeComposition(base, zones, links) {
   const mesh = makeNavigationMesh(),
     project = createSurfaceProjector(base),
@@ -215,7 +224,11 @@ export function realizeComposition(base, zones, links) {
       mesh.slopes[i] <= 38 &&
       (!inside(d) || corridors.some((p) => angle(d, p.direction) < 0.045)),
   );
-  mesh.edgeCost = (i, j) => {
+  // Стоимость ребра не меняется между поисками путей по готовой карте.
+  // Вычисляем геометрию один раз, чтобы каждый кандидат старта не повторял
+  // проверки уклона и пересечения коридоров на всех посещённых рёбрах.
+  const edgeCosts = mesh.neighbors.map(() => new Map());
+  const calculateEdgeCost = (i, j) => {
     if (!mesh.walkable[i] || !mesh.walkable[j]) return Infinity;
     const distance = angle(mesh.directions[i], mesh.directions[j]) * radius;
     if (
@@ -236,6 +249,15 @@ export function realizeComposition(base, zones, links) {
       (1 + Math.abs(mesh.heights[i] - mesh.heights[j]) / Math.max(1, distance))
     );
   };
+  for (let vertex = 0; vertex < mesh.neighbors.length; vertex++) {
+    for (const neighbor of mesh.neighbors[vertex]) {
+      if (neighbor < vertex) continue;
+      const cost = calculateEdgeCost(vertex, neighbor);
+      edgeCosts[vertex].set(neighbor, cost);
+      edgeCosts[neighbor].set(vertex, cost);
+    }
+  }
+  mesh.edgeCost = (from, to) => edgeCosts[from].get(to) ?? Infinity;
   for (const route of routes) {
     const a = byId.get(route.from),
       b = byId.get(route.to),
