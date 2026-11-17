@@ -9,6 +9,8 @@
 
 Что реализовано и что осталось, кратко описано в [PLAN.md](PLAN.md).
 
+Разработка ведётся через рабочие ветки от `dev`, без pull request; `main` хранит опубликованное состояние. Правила слияний, общей версии CLI и приложения и выпуска с тегом описаны в [docs/publishing.md](docs/publishing.md), готовящиеся изменения — в [CHANGELOG.md](CHANGELOG.md).
+
 ## Установка
 
 Нужны Rust stable с Cargo, Node.js 20.19+ или 22.12+ и npm. Для окна нужны системные зависимости Tauri 2; на Windows это Microsoft C++ Build Tools и WebView2 Runtime.
