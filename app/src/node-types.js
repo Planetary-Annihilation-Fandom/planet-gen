@@ -14,21 +14,21 @@ const relativeFields = [
 ];
 const common = [{ path: "name", label: "Название", type: "text", maxLength: 100 }, angle("radius", "Радиус области, °", 0.5, 26)];
 export const NODE_TYPES = {
-  spawn: { title: "Спавны", defaults: { radius: 0.1, layout: "ring", count: 0, latitude: 0, phase: 0, jitter: 0 }, fields: [
+  spawn: { title: "Спавны", primaryFields: ["radius", "count"], defaults: { radius: 0.1, layout: "ring", count: 0, latitude: 0, phase: 0, jitter: 0 }, fields: [
     ...common, choice("layout", "Распределение", [["ring", "Кольцо"], ["sphere", "Вся сфера"]]),
     field("count", "Количество (0 = число игроков)", 0, 12), angle("latitude", "Широта кольца, °", -60, 60, { when: (n) => n.layout === "ring" }),
     angle("phase", "Поворот распределения, °", -180, 180), angle("jitter", "Разброс спавнов, °", 0, 10),
   ] },
-  region: { title: "Область", defaults: { radius: 0.1, placement }, fields: [...common, ...relativeFields] },
-  metal: { title: "Металл", defaults: { radius: 0.085, placement, spots: 7 }, fields: [...common, ...relativeFields, field("spots", "Точек металла", 1, 100)] },
-  blocker: { title: "Блокер", defaults: { radius: 0.055, placement: { ...placement, distance: 0 }, height: 0.7, pattern: "single", chain: { count: 4, step: 0.085, gap: 0.13 } }, fields: [
+  region: { title: "Область", primaryFields: ["radius"], defaults: { radius: 0.1, placement }, fields: [...common, ...relativeFields] },
+  metal: { title: "Металл", primaryFields: ["radius", "spots"], defaults: { radius: 0.085, placement, spots: 7 }, fields: [...common, ...relativeFields, field("spots", "Точек металла", 1, 100)] },
+  blocker: { title: "Блокер", primaryFields: ["radius", "pattern"], defaults: { radius: 0.055, placement: { ...placement, distance: 0 }, height: 0.7, pattern: "single", chain: { count: 4, step: 0.085, gap: 0.13 } }, fields: [
     ...common, ...relativeFields, field("height", "Высота купола к радиусу", 0.1, 2, 0.1),
     choice("pattern", "Размещение блокеров", [["single", "Один"], ["gate", "Две цепочки с проходом"]]),
     field("chain.count", "Блокеров с каждой стороны", 1, 10, 1, { when: (n) => n.pattern === "gate" }),
     angle("chain.step", "Шаг цепочки, °", 1, 25, { when: (n) => n.pattern === "gate" }),
     angle("chain.gap", "Удаление от центра прохода, °", 1, 30, { when: (n) => n.pattern === "gate" }),
   ] },
-  ramp: { title: "Рампа", defaults: { radius: 0.065, placement: { ...placement, distance: 0.2 }, height: 0.4 }, fields: [...common, ...relativeFields, field("height", "Высота купола к радиусу", 0.1, 2, 0.1)] },
+  ramp: { title: "Рампа", primaryFields: ["radius", "height"], defaults: { radius: 0.065, placement: { ...placement, distance: 0.2 }, height: 0.4 }, fields: [...common, ...relativeFields, field("height", "Высота купола к радиусу", 0.1, 2, 0.1)] },
 };
 export function getField(node, path) { return path.split(".").reduce((v, k) => v?.[k], node); }
 export function setField(node, path, value) {
@@ -70,5 +70,5 @@ export function validateNode(node) {
     if (f.type === "text" && (typeof v !== "string" || !v.trim() || v.length > f.maxLength)) throw new Error(`${f.label}: нужно от 1 до ${f.maxLength} символов`);
   }
   if (node.kind === "blocker" && node.pattern === "gate" && node.chain.step > node.radius*2+1e-8) throw new Error("Шаг цепочки не должен превышать диаметр блокера");
-  if (node.canvas && ![node.canvas.x, node.canvas.y].every((v) => Number.isFinite(v) && Math.abs(v) <= 10000)) throw new Error("Положение ноды вне канваса");
+  if (node.canvas && ![node.canvas.x, node.canvas.y].every((v) => Number.isFinite(v))) throw new Error("Некорректное положение ноды");
 }

@@ -20,6 +20,7 @@ export default function App() {
   const host = useRef(), sceneRef = useRef(), busyRef = useRef(false), baseSource = useRef(structuredClone(BASE_SOURCE)), placements = useRef();
   const [sceneReady, setSceneReady] = useState(false), [systems, setSystems] = useState([]), [planetIndex, setPlanetIndex] = useState(0);
   const [mode, setMode] = useState('templates'), [randomSource, setRandomSource] = useState(null), [parameters, setParameters] = useState({});
+  const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [slope, setSlope] = useState(40), [settingsOpen, setSettingsOpen] = useState(true);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [result, setResult] = useState(null), [base, setBase] = useState(null);
   const [notification, setNotification] = useState(null), [layersOpen, setLayersOpen] = useState(false), [layers, setLayers] = useState(INITIAL_LAYERS);
@@ -92,7 +93,7 @@ export default function App() {
 
   const source = template ? baseSource.current : mode === 'random' ? randomSource : systems[0]?.planets?.[planetIndex];
   return <Theme theme="g90" className="app-theme">
-    <Content id="main-content" tabIndex={-1} className={`workspace${template ? ' template-mode' : ''}`}>
+    <Content id="main-content" tabIndex={-1} className={`workspace${template ? ' template-mode' : ''}${settingsOpen ? ' settings-visible' : ''}${graphCollapsed ? ' graph-collapsed' : ''}`}>
       <aside id="panel" className="settings-panel" hidden={!settingsOpen} aria-label="Параметры генерации">
         <div className="settings-heading"><h1>Параметры</h1>
           <Button kind="ghost" size="sm" hasIconOnly renderIcon={Close} iconDescription="Скрыть параметры" onClick={() => setSettingsOpen(false)} />
@@ -121,7 +122,7 @@ export default function App() {
         {busy && <div className="generation-status" role="status"><InlineLoading description={status} /></div>}
       </section>
       <ResultPanel result={result} hidden={template} />
-      <GraphPanel snapshot={snapshot} store={store} notify={notify} hidden={!template} />
+      <GraphPanel collapsed={graphCollapsed} onCollapse={() => setGraphCollapsed(value => !value)} snapshot={snapshot} store={store} notify={notify} hidden={!template} />
     </Content>
     {notification && <div className="notification-stack"><ToastNotification key={notification.key} kind={notification.error ? 'error' : 'info'} title={notification.error ? 'Не удалось выполнить действие' : 'Planet-gen'} subtitle={notification.message}
       timeout={notification.error ? 10000 : 5000} onCloseButtonClick={() => setNotification(null)} onClose={() => {}} /></div>}
