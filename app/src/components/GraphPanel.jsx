@@ -60,6 +60,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
     const saved = views.current[snapshot.template.id];
     return validView(saved) ? saved : { x: 24, y: 24, zoom: 0.7 };
   });
+  const dragging = useRef(false);
   const templateId = useRef(snapshot.template.id);
   const safe = action => { try { return action(); } catch (error) { notify(error.message, true); } };
   useEffect(() => setupGraphPanel(panel.current, handle.current), []);
@@ -103,6 +104,24 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, nodeId: node?.id, canvas: flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }
+  function dropNode(event, node) {
+    dragging.current = false;
+    if (!event.altKey || ['spawn', 'front'].includes(node.data.node.kind)) { safe(() => store.move(node.id, node.position)); return; }
+    let nearest = null, distance = 24;
+    for (const group of panel.current.querySelectorAll('.react-flow__edge')) {
+      const edge = edges.find(e => e.id === group.dataset.id);
+      if (!edge || edge.source === node.id || edge.target === node.id) continue;
+      const path = group.querySelector('.react-flow__edge-path'), matrix = path?.getScreenCTM();
+      if (!matrix) continue;
+      const length = path.getTotalLength();
+      for (let i = 0; i <= 80; i++) {
+        const point = path.getPointAtLength(length * i / 80).matrixTransform(matrix);
+        const d = Math.hypot(point.x - event.clientX, point.y - event.clientY);
+        if (d < distance) { distance = d; nearest = { from: edge.source, to: edge.target }; }
+      }
+    }
+    safe(() => store.moveThroughLink(node.id, node.position, nearest));
+  }
   const menuNode = snapshot.template.nodes.find(n => n.id === menu?.nodeId);
   const command = action => () => { setMenu(null); action(); };
   return <aside id="templateCard" className="graph-panel" ref={panel} hidden={hidden} aria-label="Граф шаблона">
@@ -119,10 +138,10 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
           setNodes(current => changes.applyTo(current));
           // Сохраняем завершённое перемещение мышью и шаги с клавиатуры.
           for (const change of changes) {
-            if (change.type === 'position' && change.position && !change.dragging) safe(() => store.move(change.id, change.position));
+            if (change.type === 'position' && change.position && !change.dragging && !dragging.current) safe(() => store.move(change.id, change.position));
           }
         }}
-        onNodeDragStop={(_, node) => safe(() => store.move(node.id, node.position))}
+        nodeDragThreshold={0} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={dropNode}
         onNodeClick={(_, node) => store.select(node.id)} onPaneClick={() => { store.select(null); setMenu(null); }}
         onConnect={({ source, target }) => safe(() => store.connect(source, target))}
         onEdgeContextMenu={(event, edge) => { event.preventDefault(); safe(() => store.remove(edge.source, edge.target)); }}
@@ -142,15 +161,10 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
     {!!snapshot.applied.debug.warnings.length && <div className="graph-notice"><InlineNotification kind="warning" title="Незавершённый граф" subtitle={snapshot.applied.debug.warnings.join("; ")} hideCloseButton lowContrast /></div>}
     {snapshot.applied.debug.error && <div className="graph-notice"><InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast /></div>}
     <Menu open={!!menu && !hidden && !collapsed} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
-      <MenuItem disabled={menuNode?.kind === 'front'} label={menu?.nodeId ? 'Создать дочернюю ноду' : 'Создать ноду'}>
-        {Object.entries(NODE_TYPES).filter(([kind]) => kind !== 'spawn' && menuNode?.kind !== 'front').map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
-      </MenuItem>
+      {Object.entries(NODE_TYPES).filter(([kind]) => kind !== 'spawn' && menuNode?.kind !== 'front').map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
+      {menu?.nodeId && !['spawn', 'front'].includes(menuNode?.kind) && <MenuItemDivider />}
       {menu?.nodeId && menuNode?.kind !== 'spawn' && <MenuItem label="Копировать ноду" onClick={command(() => actions.duplicate(menu.nodeId))} />}
       {menu?.nodeId && menuNode?.kind !== 'spawn' && <MenuItem label="Удалить ноду" kind="danger" onClick={command(() => actions.deleteNode(menu.nodeId))} />}
-      <MenuItemDivider />
-      <MenuItem label="Отменить" shortcut="Ctrl+Z" disabled={!snapshot.canUndo} onClick={command(actions.undo)} />
-      <MenuItem label="Повторить" shortcut="Ctrl+Shift+Z" disabled={!snapshot.canRedo} onClick={command(actions.redo)} />
-      <MenuItem label="Вписать граф" onClick={command(() => flow.current?.fitView({ padding: 0.15 }))} />
     </Menu>
   </aside>;
 }

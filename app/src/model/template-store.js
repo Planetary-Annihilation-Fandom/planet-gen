@@ -1,7 +1,7 @@
 import duel from '../templates/duel.json';
 import branches from '../templates/branches.json';
 import { validateTemplate, applyTemplate } from '../template-engine.js';
-import { connectNodes, disconnectNodes, layoutGraph } from '../graph-model.js';
+import { connectNodes, disconnectNodes, layoutGraph, moveThroughLink } from '../graph-model.js';
 import { createNode, setField } from '../node-types.js';
 
 const STORAGE = 'planet-gen.templates.v3';
@@ -99,6 +99,7 @@ export function createTemplateStore(storage = globalThis.localStorage) {
     },
     connect(from, to) { commit(connectNodes(template(), from, to)); },
     remove(from, to) { commit(disconnectNodes(template(), from, to)); },
+    moveThroughLink(nodeId, canvas, edge) { commit(moveThroughLink(template(), nodeId, canvas, edge)); },
     move(nodeId, canvas) { edit(t => { t.nodes.find(n => n.id === nodeId).canvas = canvas; }, { generate: false }); },
     create(kind, canvas, parent) {
       const node = createNode(kind, template().nodes, canvas);
