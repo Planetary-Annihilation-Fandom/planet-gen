@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { Button, Checkbox, FileUploaderButton, InlineNotification, Modal, TextInput } from '@carbon/react';
+import { Button, FileUploaderButton, InlineNotification, Modal, TextInput } from '@carbon/react';
 import { Add, Download, Renew } from '@carbon/icons-react';
 import { Choice, NumericField } from './Fields.jsx';
 import { downloadJSON } from '../model/planet.js';
 
-const APPLIED_LAYERS = { spawn: 'Спавны', metal: 'Металл', blocker: 'Блокеры', ramp: 'Рампы', front: 'Фронт и направляющая', links: 'Связи', debug: 'Подписи', icons: 'Значки областей' };
-
-export function TemplateControls({ store, snapshot, notify, base, layers, setLayers, placements, disabled }) {
+/** Настройки шаблона влияют на генерацию; переключатели отображения вынесены в меню слоёв над планетой. */
+export function TemplateControls({ store, snapshot, notify, base, placements, disabled }) {
   const { template, templates, parameters, applied } = snapshot;
   const [open, setOpen] = useState(false), [form, setForm] = useState({ id: '', name: '', copy: false }), [error, setError] = useState('');
   const attempt = action => { try { action(); } catch (error) { notify(error.message, true); } };
@@ -32,22 +31,24 @@ export function TemplateControls({ store, snapshot, notify, base, layers, setLay
       <Button id="newTemplate" kind="tertiary" size="sm" renderIcon={Add} disabled={disabled} onClick={() => { setForm({ id: '', name: '', copy: false }); setError(''); setOpen(true); }}>Создать</Button>
       <Button id="exportTemplate" kind="ghost" size="sm" renderIcon={Download} onClick={() => downloadJSON(`${template.id}.json`, template)}>JSON</Button>
     </div>
+    {template.version === 3 && <Button kind="tertiary" size="sm" onClick={() => attempt(() => store.convertToComposition())}>Создать композицию из 1v1</Button>}
     <FileUploaderButton id="importTemplate" labelText="Загрузить шаблон JSON" buttonKind="ghost" size="sm" accept={['.json']} disableLabelChanges onChange={importFile} disabled={disabled} />
-    <div className="section-heading">Шаблон 1v1</div>
-    <p className="helper-text">Размер: диаметр в процентах пути от спавна до фронта. При текущем радиусе 10% ≈ {Math.round(parameters.planetRadius * Math.PI / 20)} единиц поверхности. Насыщенность металла: число точек для области размера 10%; число растёт с площадью.</p>
+    <div className="section-heading">{template.version === 4 ? "Композиция" : "Шаблон 1v1"}</div>
+    <p className="helper-text">Размер: диаметр области в процентах четверти окружности планеты. При текущем радиусе 10% ≈ {Math.round(parameters.planetRadius * Math.PI / 20)} единиц поверхности. Насыщенность металла задаётся в процентах: 12% даёт четыре точки при обычном количестве металла. Размер области не увеличивает число точек.</p>
+    {template.version === 4 && <>
+      <NumericField id="compositionPlayers" label="Игроков" min={2} max={8} value={parameters.players} disabled={disabled} onChange={players => attempt(() => store.parameters({ players }))} />
+      <Choice id="contactTempo" label="Желаемый контакт" value={parameters.contact ?? 'balanced'} options={[["early","Ранний"],["balanced","Средний"],["late","Поздний"]]} onChange={contact => store.parameters({ contact })} />
+    </>}
     <NumericField id="templateSeed" label="Зерно шаблона" min={0} max={4294967295} value={parameters.seed} disabled={disabled} onChange={seed => store.parameters({ seed })} />
     <Choice id="metalScale" label="Количество металла" value={parameters.metalScale} options={[[0.5, 'Половина'], [1, 'Обычное'], [1.5, 'В 1.5 раза больше'], [2, 'Вдвое больше']]}
       disabled={disabled} onChange={value => store.parameters({ metalScale: Number(value) })} />
     <Button id="rerollTemplate" kind="tertiary" size="sm" renderIcon={Renew} disabled={disabled} onClick={() => store.parameters({ seed: crypto.getRandomValues(new Uint32Array(1))[0] })}>Новый вариант</Button>
-    <div className="section-heading">Слои шаблона</div>
-    <div className="layer-options">{Object.entries(APPLIED_LAYERS).map(([key, title]) => <Checkbox key={key} id={`layer-${key}`} labelText={title} checked={!!layers[key]}
-      onChange={(_, { checked }) => setLayers(previous => ({ ...previous, [key]: checked }))} />)}</div>
-    <Button id="exportResult" kind="tertiary" size="sm" renderIcon={Download} disabled={!base || !!applied.debug.error || disabled}
+    <Button id="exportResult" kind="tertiary" size="sm" renderIcon={Download} disabled={!base || !!applied.debug.error || applied.debug.pending || (template.version === 4 && !applied.zones.some(z => z.kind === "spawn")) || disabled}
       onClick={() => downloadJSON(`${template.id}-result.json`, { base, applied: { ...applied, result: placements.current } })}>Сохранить результат</Button>
     <Modal open={open} modalHeading="Новый шаблон" modalLabel="Редактор шаблонов" primaryButtonText="Создать" secondaryButtonText="Отмена"
       onRequestClose={() => setOpen(false)} onRequestSubmit={create} selectorPrimaryFocus="#newTemplateId">
       <form className="modal-form" onSubmit={event => { event.preventDefault(); create(); }}>
-        <Choice id="newTemplateMode" label="Основа" value={form.copy ? 'copy' : 'empty'} options={[['empty', 'Пустой со стартовой нодой'], ['copy', 'Копия выбранного шаблона']]}
+        <Choice id="newTemplateMode" label="Основа" value={form.copy ? 'copy' : 'empty'} options={[['empty', 'Пустая композиция'], ['copy', 'Копия выбранного шаблона']]}
           onChange={value => setForm({ ...form, copy: value === 'copy' })} />
         <TextInput id="newTemplateId" labelText="ID на латинице" maxLength={80} value={form.id} onChange={event => setForm({ ...form, id: event.target.value })} placeholder="my_template" required />
         <TextInput id="newTemplateName" labelText="Название" maxLength={100} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required />

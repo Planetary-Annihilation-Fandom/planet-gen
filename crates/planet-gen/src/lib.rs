@@ -48,7 +48,9 @@ pub struct Planet {
     pub csg: csg::CsgResult,
 }
 
-/// Строит планету по готовому `PlanetBp`; `csg` — массив `planetCSG` системы.
+/// Строит общую для CLI и просмотрщика геометрию по `PlanetBp` и массиву `planetCSG`.
+/// Высоты и симметрия формируют терраин, затем CSG меняет границу его объёма.
+/// Металл рассчитывается последним, чтобы лучи учитывали уже вырезанные и добавленные грани.
 pub fn generate(bp: &PlanetBp, media: &Media, csg_list: &[Value], opts: MetalOptions) -> Planet {
     let mut s = Surface::generate(bp.radius, bp.plate_size);
     if !bp.archetype.ignore_height_range {
@@ -62,7 +64,8 @@ pub fn generate(bp: &PlanetBp, media: &Media, csg_list: &[Value], opts: MetalOpt
     let graph = biomes::Graph::new(&s, &triangles);
     let bmap = biomes::assign(bp, &s, &graph, &defs);
 
-    // В игре CSG применяется после биомов и до расстановки металла.
+    // Кисти выбирают высоту исходного терраина, включая heightAdjustments и симметрию.
+    // Этот снимок не меняется после добавления кистей: следующая кисть не садится на предыдущую.
     let pre = raycast::Raycaster::new(&s);
     let far = bp.radius * 2.0;
     let sample = |d: math::V3| pre.segment(math::scale(d, far), [0.0; 3]).map_or(bp.radius, |h| math::length(h.pos));
@@ -86,6 +89,8 @@ pub fn generate(bp: &PlanetBp, media: &Media, csg_list: &[Value], opts: MetalOpt
             bsp::Vtx { p: sf.pos.map(f64::from), a }
         })
         .collect();
+    // Знак радиального зазора определяет, под терраином находится фрагмент или над ним.
+    // Для разрезания нужны исходные высоты: использование результата CSG замкнуло бы расчёт на себя.
     let field = |p: bsp::D3| {
         let r = csg::norm(p);
         let d = [(p[0] / r) as f32, (p[1] / r) as f32, (p[2] / r) as f32];

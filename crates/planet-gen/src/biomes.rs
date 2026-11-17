@@ -11,6 +11,12 @@ use crate::math::{length, sub};
 use crate::noise::simplex_scaled;
 use crate::surface::Surface;
 
+/// Шумовое поле, участвующее в выборе подбиома.
+pub fn noise_at(bp: &PlanetBp, p: crate::math::V3) -> f32 {
+    simplex_scaled(bp.height_octaves, bp.height_persistence, bp.height_scale_rule,
+        -1.0, 1.0, -2.0*p[0], -2.0*p[1], -2.0*p[2], bp.height_seed)
+}
+
 /// Интервал условия биома: `[min, max, вес]`, `None` — без границы.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Range {
@@ -208,17 +214,7 @@ pub fn assign(bp: &PlanetBp, s: &Surface, graph: &Graph, biomes: &[BiomeDef]) ->
         } else {
             ((length(p) - level) / bp.height_range).clamp(-1.0, 1.0)
         };
-        let noise = simplex_scaled(
-            bp.height_octaves,
-            bp.height_persistence,
-            bp.height_scale_rule,
-            -1.0,
-            1.0,
-            -2.0 * p[0],
-            -2.0 * p[1],
-            -2.0 * p[2],
-            bp.height_seed,
-        );
+        let noise = noise_at(bp, p);
         let (mut best, mut pick) = (0.0f32, 0usize);
         for (bi, b) in biomes.iter().enumerate() {
             let score = (b.water_distance.inside(wd[k]) * b.water_distance.weight

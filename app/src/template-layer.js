@@ -1,12 +1,15 @@
+import { createAnalysisLayer } from './analysis-layer.js';
 import * as THREE from "three";
 import { area, point, band, label, disposeObject } from "./primitives.js";
 import { KINDS } from "./template-engine.js";
 import { iconTexture } from "./icons.js";
 
+/** Проецирует области и металл на готовую поверхность; результат экспорта использует те же положения, что и просмотр. */
 export function createTemplateLayer(project, data, radius) {
   const root = new THREE.Group(), zones = new THREE.Group(), links = new THREE.Group(), debug = new THREE.Group();
   const guide = new THREE.Group();
-  root.add(guide, links, zones, debug);
+  const analysis = createAnalysisLayer(project, data, radius);
+  root.add(guide, links, zones, debug, analysis.root);
   if (data.guide) {
     guide.add(band(project, data.guide.from, data.guide.middle, .008, '#f4f4f4', .8));
     guide.add(band(project, data.guide.middle, data.guide.to, .008, '#f4f4f4', .8));
@@ -19,7 +22,7 @@ export function createTemplateLayer(project, data, radius) {
     g.userData = { nodeId: z.nodeId, zoneId: z.id, kind: z.kind };
     const color = KINDS[z.kind];
     const aspect = z.shape === 'strip' ? .25 : z.kind === 'ramp' ? .55 : 1;
-    g.add(area(project, z.direction, z.radius, color, { basis: z.basis, aspect, height: z.kind === 'ramp' ? radius*z.radius*.2 : 0, slope: z.kind === 'ramp' }));
+    g.add(area(project, z.direction, z.radius, color, { basis: z.basis, aspect }));
     if (z.kind === 'ramp') {
       const d = new THREE.Vector3(...z.direction), f = new THREE.Vector3(...z.basis.forward), r = new THREE.Vector3(...z.basis.right);
       const offset = (x, y = 0) => d.clone().multiplyScalar(Math.cos(Math.hypot(x, y))).add(f.clone().multiplyScalar(x)).add(r.clone().multiplyScalar(y)).normalize().toArray();
@@ -49,7 +52,7 @@ export function createTemplateLayer(project, data, radius) {
   function select(nodeId) {
     for (const g of zones.children) g.traverse((o) => {
       if (!o.material) return;
-      const selected = g.userData.nodeId === nodeId;
+      const selected = !!nodeId && g.userData.nodeId === nodeId;
       o.material.opacity = selected ? Math.min(0.9, o.userData.opacity * 1.9) : nodeId ? o.userData.opacity * 0.45 : o.userData.opacity;
       o.material.color.copy(o.userData.color);
       if (selected) o.material.color.lerp(new THREE.Color("#ffffff"), 0.28);
@@ -61,6 +64,7 @@ export function createTemplateLayer(project, data, radius) {
     }
   }
   function toggle(o) {
+    analysis.toggle(o);
     guide.visible = o.front !== false;
     for (const g of zones.children) g.visible = o[g.userData.kind] !== false;
     zones.traverse((object) => { if (object.userData.isIcon) object.visible = o.icons !== false; });

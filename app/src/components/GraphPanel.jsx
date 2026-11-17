@@ -1,6 +1,13 @@
+/**
+ * Канвас редактирует исходный шаблон, сохраняя положения карточек отдельно от карты.
+ * Цвет входа и вызовов одного фрагмента определяется его номером, чтобы ссылки
+ * между разнесёнными частями канваса можно было найти без раскрытия параметров.
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Login, Logout } from '@carbon/icons-react';
+import { NumericField } from './Fields.jsx';
 import { Button, InlineNotification, Menu, MenuItem, MenuItemDivider, Tag } from '@carbon/react';
 import { setupGraphPanel } from '../graph-panel.js';
 import { moveThroughLink } from '../graph-model.js';
@@ -24,11 +31,14 @@ function TemplateNode({ data, selected }) {
   const fields = type.fields.filter(field => !field.when || field.when(node));
   const primary = fields.filter(field => type.primaryFields.includes(field.path));
   return <section className={`template-node${selected ? ' selected' : ''}${inactive ? ' inactive' : ''}`} aria-label={node.name}>
-    {node.kind !== 'spawn' && <Handle type="target" position={Position.Left} id="input" aria-label="Вход" />}
-    <header className="template-node-heading"><strong>{node.name}</strong><span>{type.title}</span></header>
-    {node.kind !== 'front' && <Handle type="source" position={Position.Right} id="output" aria-label="Выход" />}
+    {!['spawn','composition','fragment'].includes(node.kind) && <Handle type="target" position={Position.Left} id="input" aria-label="Вход"><Login size={16} /></Handle>}
+    <header className="template-node-heading" style={['fragment','call'].includes(node.kind) ? {
+      background: `hsl(${(node.fragment * 137.508 + 235) % 360} 38% 28%)`,
+      borderTop: `3px solid hsl(${(node.fragment * 137.508 + 235) % 360} 65% 68%)`,
+    } : undefined}><strong>{node.name}</strong><span>{type.title}</span></header>
+    {!['front','exit'].includes(node.kind) && <Handle type="source" position={Position.Right} id="output" aria-label="Выход"><Logout size={16} /></Handle>}
     <div className="node-fields node-primary-fields nodrag nowheel nopan" aria-label="Основные параметры">
-      {primary.map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}
+      {(selected ? fields : primary).map(field => <NodeField key={field.path} node={node} field={field} store={store} />)}
     </div>
   </section>;
 }
@@ -36,6 +46,7 @@ const nodeTypes = { template: TemplateNode };
 
 export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onCollapse }) {
   const panel = useRef(), handle = useRef(), flow = useRef(), views = useRef(readViews());
+  const [selectedEdge, setSelectedEdge] = useState(null);
   const [menu, setMenu] = useState(null), [nodes, setNodes] = useState([]), [viewport, setViewport] = useState(() => {
     const saved = views.current[snapshot.template.id];
     return validView(saved) ? saved : { x: 24, y: 24, zoom: 0.7 };
@@ -59,7 +70,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
     try { localStorage.setItem(VIEW_KEY, JSON.stringify(views.current)); } catch { /* Навигация работает и без сохранения. */ }
   }
   const edges = useMemo(() => snapshot.template.links.map(link => ({ id: `${link.from}:${link.to}`, source: link.from, target: link.to,
-    sourceHandle: 'output', targetHandle: 'input', type: 'smoothstep' })), [snapshot.template]);
+    sourceHandle: 'output', targetHandle: 'input', type: 'default', label: snapshot.template.nodes.find(n => n.id === link.from)?.kind === 'choice' ? `Вес ${link.weight ?? 1}` : undefined })), [snapshot.template]);
   function suggest(parent) {
     const position = snapshot.template.nodes.find(node => node.id === parent)?.canvas;
     return position ? { x: position.x + 360, y: position.y + 120 } : flow.current.screenToFlowPosition({ x: panel.current.getBoundingClientRect().left + 80, y: 180 });
@@ -87,7 +98,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
   }
   function dragPreview(event, node) {
     lastDrag.current = { event, node };
-    if (!event.altKey || ['spawn', 'front'].includes(node.data.node.kind)) { setPreview(null); return null; }
+    if (!event.altKey || !['metal','blocker','ramp','call','choice'].includes(node.data.node.kind)) { setPreview(null); return null; }
     const element = panel.current.querySelector(`[data-id="${node.id}"]`);
     const rect = element?.getBoundingClientRect(), origin = flow.current.flowToScreenPosition(node.position);
     if (!rect) return null;
@@ -135,7 +146,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
   const previewKeys = new Set(preview?.links?.map(l => `${l.from}:${l.to}`));
   const displayEdges = preview?.links ? [
     ...edges.map(edge => ({ ...edge, className: preview.edge && edge.id === `${preview.edge.from}:${preview.edge.to}` ? 'edge-target' : !previewKeys.has(edge.id) ? 'edge-removing' : '' })),
-    ...preview.links.filter(l => !edges.some(e => e.source === l.from && e.target === l.to)).map(l => ({ id: `preview:${l.from}:${l.to}`, source: l.from, target: l.to, sourceHandle: 'output', targetHandle: 'input', type: 'smoothstep', className: 'edge-preview', selectable: false, focusable: false })),
+    ...preview.links.filter(l => !edges.some(e => e.source === l.from && e.target === l.to)).map(l => ({ id: `preview:${l.from}:${l.to}`, source: l.from, target: l.to, sourceHandle: 'output', targetHandle: 'input', type: 'default', className: 'edge-preview', selectable: false, focusable: false })),
   ] : edges;
   const menuNode = snapshot.template.nodes.find(n => n.id === menu?.nodeId);
   const command = action => () => { setMenu(null); action(); };
@@ -146,9 +157,9 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
       <Button kind="ghost" size="sm" disabled={!snapshot.canUndo} onClick={actions.undo}>Отменить</Button>
       <Button kind="ghost" size="sm" disabled={!snapshot.canRedo} onClick={actions.redo}>Повторить</Button>
     </div></div>
-    <div className="graph-summary"><Tag type="gray" size="sm">1v1</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
+    <div className="graph-summary"><Tag type="gray" size="sm">{snapshot.template.version === 4 ? "Композиция" : "1v1"}</Tag><Tag type="gray" size="sm">{snapshot.applied.zones.length} областей</Tag><Tag type="gray" size="sm">{snapshot.applied.debug.metal} металла</Tag></div>
     <div className="graph-canvas" id="nodeCanvas">
-      <ReactFlow nodes={nodes} edges={displayEdges} nodeTypes={nodeTypes} defaultEdgeOptions={{ zIndex: 0 }} elevateEdgesOnSelect={false} onInit={instance => { flow.current = instance; }}
+      <ReactFlow nodes={nodes} edges={displayEdges} nodeTypes={nodeTypes} connectionLineType="default" defaultEdgeOptions={{ zIndex: 0 }} elevateEdgesOnSelect={false} onInit={instance => { flow.current = instance; }}
         onNodesChange={changes => {
           setNodes(current => changes.applyTo(current));
           // Сохраняем завершённое перемещение мышью и шаги с клавиатуры.
@@ -159,6 +170,7 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
         nodeDragThreshold={0} onNodeDragStart={(event, node) => { dragging.current = true; pathSamples.current = null; store.select(node.id); dragPreview(event, node); }} onNodeDrag={dragPreview} onNodeDragStop={dropNode}
         onNodeClick={(_, node) => store.select(node.id)} onPaneClick={() => { store.select(null); setMenu(null); }}
         onConnect={({ source, target }) => safe(() => store.connect(source, target))}
+        onEdgeClick={(_, edge) => setSelectedEdge({ from: edge.source, to: edge.target })}
         onEdgeContextMenu={(event, edge) => { event.preventDefault(); safe(() => store.remove(edge.source, edge.target)); }}
         onNodeContextMenu={contextMenu} onPaneContextMenu={event => contextMenu(event)}
         viewport={viewport} onViewportChange={view => { pathSamples.current = null; setViewport(view); }} onMoveEnd={(_, view) => saveView(view)}
@@ -168,16 +180,16 @@ export function GraphPanel({ snapshot, store, notify, hidden, collapsed, onColla
         <Background />
       </ReactFlow>
     </div>
+    {selectedEdge && snapshot.template.nodes.find(n => n.id === selectedEdge.from)?.kind === 'choice' && snapshot.template.links.some(l => l.from === selectedEdge.from && l.to === selectedEdge.to) && <div className="graph-notice"><NumericField id="choiceWeight" label={`Вес связи от ${selectedEdge.from} к ${selectedEdge.to}`} min={0} max={1000} value={snapshot.template.links.find(l => l.from === selectedEdge.from && l.to === selectedEdge.to)?.weight ?? 1} onChange={weight => safe(() => store.linkWeight(selectedEdge.from, selectedEdge.to, weight))} /></div>}
     {preview && <div className={`drag-preview-status${preview.error ? ' invalid' : ''}`} role="status">{preview.message}</div>}
     <div className="graph-navigation button-row" aria-label="Навигация по графу">
       <Button kind="ghost" size="sm" onClick={() => flow.current?.zoomOut()}>−</Button>
       <Button kind="ghost" size="sm" onClick={() => flow.current?.zoomIn()}>+</Button>
       <Button kind="ghost" size="sm" onClick={() => flow.current?.fitView({ padding: 0.15 })}>Вписать граф</Button>
     </div>
-    {!!snapshot.applied.debug.warnings.length && <div className="graph-notice"><InlineNotification kind="warning" title="Незавершённый граф" subtitle={snapshot.applied.debug.warnings.join("; ")} hideCloseButton lowContrast /></div>}
     {snapshot.applied.debug.error && <div className="graph-notice"><InlineNotification kind="error" title="Ошибка шаблона" subtitle={snapshot.applied.debug.error} hideCloseButton lowContrast /></div>}
     <Menu open={!!menu && !hidden && !collapsed} x={menu?.x ?? 0} y={menu?.y ?? 0} onClose={() => setMenu(null)} label="Действия с графом">
-      {Object.entries(NODE_TYPES).filter(([kind]) => kind !== 'spawn' && menuNode?.kind !== 'front').map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
+      {Object.entries(NODE_TYPES).filter(([kind]) => (snapshot.template.version === 4 ? !['spawn','front'].includes(kind) : !['composition','fragment','call','choice','exit','spawn'].includes(kind)) && !['front','exit'].includes(menuNode?.kind)).map(([kind, type]) => <MenuItem key={kind} label={type.title} onClick={command(() => safe(() => store.create(kind, menu?.nodeId ? suggest(menu.nodeId) : menu.canvas, menu?.nodeId)))} />)}
       {menu?.nodeId && !['spawn', 'front'].includes(menuNode?.kind) && <MenuItemDivider />}
       {menu?.nodeId && menuNode?.kind !== 'spawn' && <MenuItem label="Копировать ноду" onClick={command(() => actions.duplicate(menu.nodeId))} />}
       {menu?.nodeId && menuNode?.kind !== 'spawn' && <MenuItem label="Удалить ноду" kind="danger" onClick={command(() => actions.deleteNode(menu.nodeId))} />}

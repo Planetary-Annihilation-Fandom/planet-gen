@@ -18,8 +18,11 @@ pub enum SymmetryType {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HeightAdjustment {
+    /// Центр области в мировых координатах исходной сферы.
     pub pos: [f32; 3],
     pub radius: f32,
+    /// Целевая высота над радиусом планеты, а не прибавка к шуму.
+    /// `normalizedAdjustment` входного JSON переводится сюда через `height_range`.
     pub adjustment: f32,
 }
 
@@ -97,6 +100,9 @@ pub fn generator_object(v: &Value) -> &Value {
 }
 
 impl PlanetBp {
+    /// Переводит настройки редактора в единицы генератора. Например, heightRange=50
+    /// даёт внутренний диапазон 80, а normalizedAdjustment=0.3 задаёт высоту 24.
+    /// Корректировки сохраняются в порядке JSON: каждая изменяет результат предыдущей.
     pub fn from_generator(g: &Value, archetype: Archetype) -> Self {
         let pct = 100.0f64;
         let radius = num(g, "radius", 1000.0) as f32;
@@ -113,10 +119,23 @@ impl PlanetBp {
             .map(|a| {
                 a.iter()
                     .filter_map(|h| {
+                        // Правила HeightAdjustment::parse из игры: нормированная цель
+                        // в [-1, 1] заменяет абсолютную, а неположительный радиус исключает запись.
+                        // Сначала приводим числа к f32, чтобы проверять границы как движок.
+                        let radius = num(h, "radius", 0.0) as f32;
+                        if radius <= 0.0 {
+                            return None;
+                        }
+                        let normalized = num(h, "normalizedAdjustment", -9999.0) as f32;
+                        let adjustment = if (-1.0..=1.0).contains(&normalized) {
+                            normalized * height_range
+                        } else {
+                            num(h, "adjustment", 0.0) as f32
+                        };
                         Some(HeightAdjustment {
                             pos: vec3(h.get("pos").or_else(|| h.get("position"))?)?,
-                            radius: num(h, "radius", 0.0) as f32,
-                            adjustment: num(h, "adjustment", 0.0) as f32,
+                            radius,
+                            adjustment,
                         })
                     })
                     .collect()

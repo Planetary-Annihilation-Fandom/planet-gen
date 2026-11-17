@@ -73,8 +73,8 @@ function mesh(positions, indices, color, opacity) {
   return new THREE.Mesh(g, material(color, opacity));
 }
 
-// Залитый геодезический диск; высота купола задаётся в мировых единицах.
-export function area(project, center, radius, color, { opacity = 0.35, height = 0, lift = 2, basis, aspect = 1, slope = false } = {}) {
+// Залитый геодезический диск, спроецированный на поверхность основы.
+export function area(project, center, radius, color, { opacity = 0.35, lift = 2, basis, aspect = 1 } = {}) {
   const d = new THREE.Vector3(...center).normalize();
   const [x, y] = basis ? [new THREE.Vector3(...basis.forward), new THREE.Vector3(...basis.right)] : frame(d);
   const positions = [], indices = [], rings = 8, segments = 48;
@@ -83,20 +83,13 @@ export function area(project, center, radius, color, { opacity = 0.35, height = 
     const tangent = x.clone().multiplyScalar(Math.cos(a)).addScaledVector(y, Math.sin(a) * aspect);
     const angle = radius * t * tangent.length(); tangent.normalize();
     const dir = d.clone().multiplyScalar(Math.cos(angle)).addScaledVector(tangent, Math.sin(angle));
-    const h = height * (slope ? (1 + t * Math.cos(a)) / 2 : Math.sqrt(Math.max(0, 1-t*t)));
-    positions.push(...project(dir, lift + h).toArray());
+    positions.push(...project(dir, lift).toArray());
     if (r && s) {
       const i = r * (segments + 1) + s;
       indices.push(i, i - 1, i - segments - 1, i - 1, i - segments - 2, i - segments - 1);
     }
   }
-  const result = mesh(positions, indices, color, opacity);
-  if (height) {
-    result.material.dispose();
-    result.geometry.computeVertexNormals();
-    result.material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, roughness: 0.8 });
-  }
-  return result;
+  return mesh(positions, indices, color, opacity);
 }
 
 export function point(project, direction, radius, color) {

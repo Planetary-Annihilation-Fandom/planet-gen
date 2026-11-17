@@ -1,3 +1,4 @@
+import { DisplayControls } from './components/DisplayControls.jsx';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Accordion, AccordionItem, Button, Checkbox, Content, Layer, InlineLoading, InlineNotification, Theme, ToastNotification } from '@carbon/react';
@@ -6,9 +7,10 @@ import { createScene } from './scene.js';
 import { cleanBasePlanet } from './template-engine.js';
 import { createTemplateStore } from './model/template-store.js';
 import { BASE_SOURCE, asSystem, randomPlanet } from './model/planet.js';
-import { GeneratorFields, NumericField } from './components/Fields.jsx';
+import { Choice, GeneratorFields, NumericField } from './components/Fields.jsx';
 import { TemplateControls } from './components/TemplateControls.jsx';
 import { GraphPanel } from './components/GraphPanel.jsx';
+import { FinalGraphPanel } from './components/FinalGraphPanel.jsx';
 import { ResultPanel } from './components/ResultPanel.jsx';
 
 const SURFACE_LAYERS = { textures: 'Текстуры', water: 'Вода и лава', csg: 'CSG', subtract: 'Вычитание', metal: 'Металл', candidates: 'Кандидаты металла', wire: 'Сетка поверхности' };
@@ -19,12 +21,16 @@ export default function App() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const host = useRef(), sceneRef = useRef(), busyRef = useRef(false), baseSource = useRef(structuredClone(BASE_SOURCE)), placements = useRef();
   const [sceneReady, setSceneReady] = useState(false), [systems, setSystems] = useState([]), [planetIndex, setPlanetIndex] = useState(0);
+  const [systemIndex, setSystemIndex] = useState(0);
   const [mode, setMode] = useState('templates'), [randomSource, setRandomSource] = useState(null), [parameters, setParameters] = useState({});
+  const [finalOpen, setFinalOpen] = useState(false);
+  const shownSurface = useRef(null), surfaceRender = useRef(Promise.resolve()), display = useRef();
   const [graphCollapsed, setGraphCollapsed] = useState(false);
   const [slope, setSlope] = useState(40), [settingsOpen, setSettingsOpen] = useState(true);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [result, setResult] = useState(null), [base, setBase] = useState(null);
   const [notification, setNotification] = useState(null), [layersOpen, setLayersOpen] = useState(false), [layers, setLayers] = useState(INITIAL_LAYERS);
   const [appliedLayers, setAppliedLayers] = useState({ spawn: true, metal: true, blocker: true, ramp: true, front: true, links: true, debug: false, icons: true });
+  display.current = { layers, appliedLayers, selected: snapshot.selected };
   const tauri = !!window.__TAURI_INTERNALS__;
   const template = mode === 'templates';
   function notify(message, error = false) { setNotification({ message: String(message), error, key: Date.now() }); }
@@ -40,14 +46,27 @@ export default function App() {
   }, [layers, template, result]);
   useEffect(() => {
     if (!sceneReady) return;
-    placements.current = sceneRef.current.setApplied(template && base ? snapshot.applied : null, id => store.select(id));
-    sceneRef.current.toggleApplied(appliedLayers);
-    sceneRef.current.selectNode(snapshot.selected);
+    let active = true;
+    async function update() {
+      const surface = template ? base?.result : null;
+      if (surface && shownSurface.current !== surface) {
+        shownSurface.current = surface;
+        surfaceRender.current = sceneRef.current.show(surface, { template: true });
+      }
+      await surfaceRender.current;
+      if (!active) return;
+      placements.current = sceneRef.current.setApplied(template && base ? snapshot.applied : null, id => store.select(id));
+      sceneRef.current.toggle({ ...display.current.layers, ...(template ? { water: false, csg: false, subtract: false, metal: false, candidates: false } : {}) });
+      sceneRef.current.toggleApplied(display.current.appliedLayers);
+      sceneRef.current.selectNode(display.current.selected);
+    }
+    update().catch(error => notify(error.message, true));
+    return () => { active = false; };
   }, [sceneReady, snapshot.applied, base, template, store]);
   useEffect(() => { sceneRef.current?.toggleApplied(appliedLayers); }, [appliedLayers]);
   useEffect(() => { sceneRef.current?.selectNode(snapshot.selected); }, [snapshot.selected]);
 
-  async function generate(nextMode, source, values, systemName = systems[0]?.name ?? '') {
+  async function generate(nextMode, source, values, systemName = systems[systemIndex]?.name ?? '') {
     if (!source || busyRef.current) return;
     if (!tauri) { notify('Для генерации откройте приложение planet-gen.', true); return; }
     if (!sceneRef.current) return;
@@ -65,8 +84,8 @@ export default function App() {
       setStatus('Загрузка текстур');
       let nextBase = null;
       if (nextMode === 'templates') { nextBase = cleanBasePlanet(planet, numeric); planet = nextBase.result; }
-      await sceneRef.current.show(planet, { template: nextMode === 'templates' });
-      if (nextBase) { baseSource.current = { ...BASE_SOURCE, planet: numeric }; setBase(nextBase); store.parameters({ planetRadius: Number(numeric.radius) }); }
+      if (nextMode !== 'templates') await sceneRef.current.show(planet);
+      if (nextBase) { baseSource.current = { ...BASE_SOURCE, planet: numeric }; setBase(nextBase); store.surface(nextBase.result); }
       setResult({ planet, name: source.name ?? 'Планета', ms, system: nextMode === 'templates' ? 'Основа шаблона' : nextMode === 'random' ? 'Случайная планета' : systemName });
     } catch (error) { notify(String(error), true); }
     finally { busyRef.current = false; setBusy(false); setStatus(''); }
@@ -80,9 +99,9 @@ export default function App() {
         if (args.path) { const doc = await invoke('read_system', { path: args.path }); list = [{ ...asSystem(doc, args.path), __file: true }, ...list]; }
         if (!active) return;
         setSystems(list);
-        const index = args.path ? args.planet ?? 0 : 0;
+        const index = Math.min(args.planet ?? 0, Math.max(0, (list[0]?.planets?.length ?? 1) - 1));
         setPlanetIndex(index);
-        const nextMode = args.templates ? 'templates' : args.random ? 'random' : args.path ? 'existing' : 'templates';
+        const nextMode = args.templates ? 'templates' : args.random ? 'random' : args.path || args.viewer ? 'existing' : 'templates';
         const source = nextMode === 'templates' ? baseSource.current : nextMode === 'random' ? randomPlanet(args.random) : list[0]?.planets?.[index];
         if (nextMode === 'random') setRandomSource(source);
         setMode(nextMode); setParameters({ ...source?.planet });
@@ -91,14 +110,23 @@ export default function App() {
     return () => { active = false; };
   }, [sceneReady]);
 
-  const source = template ? baseSource.current : mode === 'random' ? randomSource : systems[0]?.planets?.[planetIndex];
+  const source = template ? baseSource.current : mode === 'random' ? randomSource : systems[systemIndex]?.planets?.[planetIndex];
+  function selectPlanet(system, planet) {
+    const source = systems[system]?.planets?.[planet];
+    setSystemIndex(system); setPlanetIndex(planet); setParameters({ ...source?.planet });
+    generate('existing', source, source?.planet ?? {}, systems[system]?.name ?? '');
+  }
   return <Theme theme="g90" className="app-theme">
     <Content id="main-content" tabIndex={-1} className={`workspace${template ? ' template-mode' : ''}${settingsOpen ? ' settings-visible' : ''}${graphCollapsed ? ' graph-collapsed' : ''}`}>
       <aside id="panel" className="settings-panel" hidden={!settingsOpen} aria-label="Параметры генерации">
         <div className="settings-heading"><h1>Параметры</h1>
           <Button kind="ghost" size="sm" hasIconOnly renderIcon={Close} iconDescription="Скрыть параметры" onClick={() => setSettingsOpen(false)} />
         </div>
-        {template && <Layer className="source-form"><TemplateControls store={store} snapshot={snapshot} notify={notify} base={base} layers={appliedLayers} setLayers={setAppliedLayers} placements={placements} disabled={busy} /></Layer>}
+        {template && <Layer className="source-form"><TemplateControls store={store} snapshot={snapshot} notify={notify} base={base} placements={placements} disabled={busy} /></Layer>}
+        {mode === 'existing' && <div className="source-form">
+          <Choice id="viewer-system" label="Система" value={systemIndex} disabled={busy} options={systems.map((system, i) => [i, system.name ?? `Система ${i + 1}`])} onChange={value => selectPlanet(Number(value), 0)} />
+          <Choice id="viewer-planet" label="Планета" value={planetIndex} disabled={busy} options={(systems[systemIndex]?.planets ?? []).map((planet, i) => [i, planet.name ?? `Планета ${i + 1}`])} onChange={value => selectPlanet(systemIndex, Number(value))} />
+        </div>}
         <Accordion className="generator-accordion" size="sm">
           <AccordionItem title={template ? 'Параметры основы' : 'Параметры генератора'} open>
           <GeneratorFields parameters={parameters} onChange={setParameters} template={template} disabled={busy} />
@@ -111,15 +139,19 @@ export default function App() {
       <section className="planet-workspace" aria-label="Просмотр планеты">
         <div className={`viewport-toolbar${settingsOpen ? ' settings-open' : ''}`}>
           {!settingsOpen && <Button kind="secondary" size="sm" hasIconOnly renderIcon={Menu} iconDescription="Показать параметры" aria-controls="panel" aria-expanded={false} onClick={() => setSettingsOpen(true)} />}
-          <Button kind="secondary" size="sm" hasIconOnly renderIcon={SettingsAdjust} iconDescription="Слои поверхности" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)} />
-          {layersOpen && <section className="surface-layers" aria-label="Слои поверхности"><h3>Слои поверхности</h3>
+          <Button kind="secondary" size="sm" hasIconOnly renderIcon={SettingsAdjust} iconDescription="Слои планеты и расчёт стартов" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)} />
+          {/* Слои доступны над планетой и не зависят от видимости панели генерации. */}
+          {layersOpen && <section className="surface-layers" aria-label="Слои планеты"><h3>Поверхность</h3>
             {Object.entries(SURFACE_LAYERS).filter(([key]) => !template || ['textures', 'wire'].includes(key)).map(([key, label]) => <Checkbox id={`surface-${key}`} key={key} labelText={label} checked={layers[key]} onChange={(_, { checked }) => setLayers({ ...layers, [key]: checked })} />)}
+            {template && <DisplayControls snapshot={snapshot} layers={appliedLayers} setLayers={setAppliedLayers} />}
           </section>}
         </div>
+        {template && <div className="final-graph-toggle"><Button size="sm" kind="secondary" onClick={() => setFinalOpen(v => !v)} aria-expanded={finalOpen}>Конечный граф</Button></div>}
+        {template && finalOpen && <FinalGraphPanel applied={snapshot.applied} onClose={() => setFinalOpen(false)} onSelect={id => store.select(id)} />}
         <div ref={host} id="view" />
         {!result && !busy && <div className="viewport-empty"><h3>Планета появится здесь</h3></div>}
         {!tauri && <div className="runtime-notice"><InlineNotification kind="info" title="Режим просмотра интерфейса" subtitle="Для генерации запустите приложение через npm run tauri -- dev." hideCloseButton lowContrast /></div>}
-        {busy && <div className="generation-status" role="status"><InlineLoading description={status} /></div>}
+        {(busy || snapshot.applied.debug.pending) && <div className="generation-status" role="status"><InlineLoading description={busy ? status : 'Рельеф, навигация и спавны'} /></div>}
       </section>
       <ResultPanel result={result} hidden={template} />
       <GraphPanel collapsed={graphCollapsed} onCollapse={() => setGraphCollapsed(value => !value)} snapshot={snapshot} store={store} notify={notify} hidden={!template} />

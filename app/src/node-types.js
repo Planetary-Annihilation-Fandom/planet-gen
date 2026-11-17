@@ -1,4 +1,4 @@
-export const KINDS = { spawn: '#24a56a', metal: '#e5ae22', blocker: '#e34c50', ramp: '#4089e8', front: '#8b6cd6' };
+export const KINDS = { spawn: '#24a56a', metal: '#e5ae22', blocker: '#e34c50', ramp: '#4089e8', front: '#8b6cd6', composition: '#a6c8ff', fragment: '#d4bbff', call: '#be95ff', choice: '#ff7eb6', exit: '#82cfff' };
 const number = (path, label, min, max, step = 1) => ({ path, label, type: 'number', min, max, step });
 const size = number('size', 'Размер, %', 1, 100);
 const name = { path: 'name', label: 'Название', type: 'text', maxLength: 100 };
@@ -8,6 +8,11 @@ export const NODE_TYPES = {
   blocker: { title: 'Блокер', primaryFields: ['size', 'shape'], defaults: { size: 16, shape: 'circle' }, fields: [name, size,
     { path: 'shape', label: 'Форма', type: 'select', options: [['circle', 'Окружность'], ['strip', 'Полоса']] }] },
   ramp: { title: 'Рампа', primaryFields: ['size', 'orientation'], defaults: { size: 12, orientation: 0 }, fields: [name, size, number('orientation', 'Угол к направляющей, °', -180, 180)] },
+  composition: { title: 'Композиция', primaryFields: [], defaults: {}, fields: [name] },
+  fragment: { title: 'Вход фрагмента', primaryFields: ['fragment'], defaults: { fragment: 1 }, fields: [name, number('fragment', 'Номер фрагмента', 1, 999)] },
+  call: { title: 'Вызов фрагмента', primaryFields: ['fragment', 'maxRepeats'], defaults: { fragment: 1, maxRepeats: 3 }, fields: [name, number('fragment', 'Номер фрагмента', 1, 999), number('maxRepeats', 'Предел вложений', 1, 12)] },
+  choice: { title: 'Выбор', primaryFields: ['maxVisits'], defaults: { maxVisits: 3 }, fields: [name, number('maxVisits', 'Предел повторов', 1, 12)] },
+  exit: { title: 'Выход фрагмента', primaryFields: [], defaults: {}, fields: [name] },
   front: { title: 'Фронт', primaryFields: [], defaults: {}, fields: [name] },
 };
 export function getField(node, path) { return node[path]; }
@@ -19,7 +24,7 @@ export function createNode(kind, existing = [], canvas) {
   return { id: `${kind}_${i}`, kind, name: NODE_TYPES[kind].title, ...structuredClone(NODE_TYPES[kind].defaults), ...(canvas ? { canvas } : {}) };
 }
 export function upgradeTemplate(raw) {
-  if (raw?.version !== 3) throw new Error('Нужен шаблон 1v1 версии 3');
+  if (![3, 4].includes(raw?.version)) throw new Error('Нужен шаблон версии 3 или 4');
   return structuredClone(raw);
 }
 export function validateNode(node) {

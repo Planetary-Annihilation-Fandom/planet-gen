@@ -129,3 +129,18 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .react-flow__edge.edge-preview .react-flow__edge-path { stroke: var(--cds-support-info); stroke-width: 3; stroke-dasharray: 6 4; }
 .drag-preview-status { position: absolute; bottom: spacing.$spacing-10; inset-inline: spacing.$spacing-05; z-index: 220; pointer-events: none; padding: spacing.$spacing-03 spacing.$spacing-05; color: var(--cds-text-primary); background: var(--cds-layer-selected-01); @include type.type-style('body-compact-01'); }
 .drag-preview-status.invalid { color: var(--cds-text-error); }
+
+.template-node .react-flow__handle { display: grid; place-items: center; border-radius: 3px; width: 24px; height: 24px; color: var(--cds-text-on-color); }
+.template-node .react-flow__handle svg { pointer-events: none; }
+.template-node .react-flow__handle-target { background: var(--cds-support-info); }
+.template-node .react-flow__handle-source { background: var(--cds-support-success); border-radius: 50%; }
+.final-graph-toggle { position: absolute; bottom: 16px; left: 16px; z-index: 2; }
+.final-graph-panel { position: absolute; inset: auto 16px 64px 16px; height: min(440px, 65%); min-width: 0; z-index: 4; display: flex; flex-direction: column; background: var(--cds-layer-01); border: 1px solid var(--cds-border-strong-01); }
+.final-graph-panel > .helper-text, .final-graph-panel > details { padding: 8px 16px; }
+.final-graph-canvas { flex: 1; min-height: 100px; }
+.expansion-trace { max-height: 100px; overflow: auto; font-size: 12px; }
+.graph-summary .cds--tag { margin: 0; }
+
+/* Меню слоёв остаётся в пределах окна и доступно при скрытой панели параметров. */
+.surface-layers { width: min(340px, calc(100vw - 48px)); max-height: calc(100vh - 88px); overflow-y: auto; }
+.surface-layers h3:not(:first-child) { margin-top: 12px; }
