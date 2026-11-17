@@ -1,3 +1,4 @@
+import { placeSide } from './sphere-layout.js';
 import { analyzeGraph } from './graph-model.js';
 import { validateNode, upgradeTemplate } from './node-types.js';
 export { KINDS } from './node-types.js';
@@ -9,7 +10,6 @@ const add = (a, b) => a.map((v, i) => v + b[i]);
 const mul = (a, k) => a.map(v => v * k);
 const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
 const norm = a => mul(a, 1 / Math.hypot(...a));
-const angularRadius = n => n.kind === 'front' ? 0 : n.size / 200 * HALF;
 function hash(text) { let h = 2166136261; for (const c of text) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
 function random(seed) { let s = seed >>> 0; return () => { s += 0x6d2b79f5; let n = Math.imul(s ^ s >>> 15, 1 | s); n ^= n + Math.imul(n ^ n >>> 7, 61 | n); return ((n ^ n >>> 14) >>> 0) / 4294967296; }; }
 export function validateTemplate(raw) {
@@ -26,54 +26,6 @@ export function validateTemplate(raw) {
   analyzeGraph(t); return t;
 }
 
-// Поиск выполняется на одной полусфере. t — расстояние от спавна, bearing —
-// отклонение от направляющей. Все дочерние центры дальше от спавна, чем входы.
-// Для фигур резервируется описанный диск: это консервативная проверка вместимости.
-function placeSide(graph) {
-  const order = graph.order.filter(n => graph.active.has(n.id) && n.kind !== 'front');
-  const radii = new Map(order.map(n => [n.id, angularRadius(n)]));
-  const weights = new Map(), remaining = new Map();
-  const activeOrder = graph.order.filter(n => graph.active.has(n.id));
-  for (const n of activeOrder) weights.set(n.id, Math.max(0, ...graph.parents.get(n.id).filter(id => graph.active.has(id)).map(id => weights.get(id))) + angularRadius(n) * 2);
-  for (const n of [...activeOrder].reverse()) remaining.set(n.id, angularRadius(n) * 2 + Math.max(0, ...graph.children.get(n.id).filter(id => graph.active.has(id)).map(id => remaining.get(id))));
-  const placed = new Map();
-  const spawn = order[0];
-  placed.set(spawn.id, { t: 0, direction: [1, 0, 0], bearing: 0, radius: radii.get(spawn.id) });
-  const area = order.reduce((sum, n) => sum + 1 - Math.cos(radii.get(n.id)), 0);
-  if (area > 1 + 1e-8) throw new Error('Резервируемые диски занимают больше площади полусферы. Уменьшите размеры или число областей.');
-  let attempts = 0, failed = order[1];
-  const candidates = new Map(order.slice(1).map(n => {
-    const radius = radii.get(n.id), target = HALF * (weights.get(n.id) - radius) / (weights.get(n.id) + remaining.get(n.id) - 2 * radius);
-    const values = [];
-    for (let row = 0; row <= 32; row++) {
-      const t = radius + (HALF - 2 * radius) * row / 32;
-      for (let column = 0; column < 48; column++) {
-        const bearing = column === 0 ? 0 : (column % 2 ? 1 : -1) * Math.ceil(column / 2) * Math.PI / 24;
-        values.push({ t, bearing, radius, direction: [Math.cos(t), Math.sin(t)*Math.cos(bearing), Math.sin(t)*Math.sin(bearing)], cost: Math.abs(t - target) + Math.abs(bearing) * .08 });
-      }
-    }
-    // Сначала пробуем точное положение на направляющей, затем сетку полусферы.
-    values.push({ t: target, bearing: 0, radius, direction: [Math.cos(target), Math.sin(target), 0], cost: -1 });
-    return [n.id, values.filter(p => p.t >= radius && p.t + radius <= HALF + 1e-8).sort((a, b) => a.cost - b.cost)];
-  }));
-  function search(index) {
-    if (index === order.length) return true;
-    const n = order[index];
-    failed = n;
-    const minimum = Math.max(0, ...graph.parents.get(n.id).map(id => placed.get(id)?.t ?? 0)) + .002;
-    for (const p of candidates.get(n.id)) {
-      if (++attempts > 180000) return false;
-      if (p.t < minimum) continue;
-      if ([...placed.values()].some(q => dot(p.direction, q.direction) > Math.cos(p.radius + q.radius + .003))) continue;
-      placed.set(n.id, p);
-      if (search(index + 1)) return true;
-      placed.delete(n.id);
-    }
-    return false;
-  }
-  if (!search(1)) throw new Error(`Не удалось разместить «${failed?.name ?? 'области'}» без пересечений в своей половине, сохранив порядок связей${attempts > 180000 ? ': достигнут предел поиска' : ': свободного места на сетке поиска нет'}. Уменьшите размеры или число областей. Для полос и рамп резервируется описанная окружность.`);
-  return placed;
-}
 export function applyTemplate(raw, { players = 2, seed, metalScale = 1, planetRadius = 500 }) {
   const template = validateTemplate(raw);
   if (players !== 2 || !Number.isInteger(seed) || !finite(seed, 0, 4294967295) || !finite(metalScale, .25, 3) || !finite(planetRadius, 100, 1200)) throw new Error('Неверные параметры шаблона 1v1');
